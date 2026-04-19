@@ -1,0 +1,31 @@
+{
+  "name": "claude-setups",
+  "version": "0.1.0",
+  "description": "Publish, discover, and mirror Claude Code setups — safely, via GitHub",
+  "type": "module",
+  "main": "src/cli.mjs",
+  "bin": {
+    "claude-setups": "src/cli.mjs"
+  },
+  "files": ["src/", "README.md", "LICENSE"],
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adhenawer/claude-setups.git"
+  },
+  "bugs": {
+    "url": "https://github.com/adhenawer/claude-setups/issues"
+  },
+  "homepage": "https://github.com/adhenawer/claude-setups#readme",
+  "keywords": ["claude-code", "plugin", "setup", "share", "community"],
+  "license": "MIT",
+  "author": {
+    "name": "Rodolfo Moraes"
+  }
+}
