@@ -58,23 +58,59 @@ async function cmdPublish(parsed) {
   }));
 }
 
+async function cmdMirror(parsed) {
+  const urlOrId = parsed._[0];
+  if (!urlOrId) {
+    console.error('Error: mirror requires a URL or <author>/<slug>');
+    console.error('Example: claude-setups mirror alice/demo-setup');
+    process.exit(1);
+  }
+  const { mirror } = await import('./mirror.mjs');
+  const { typedConfirm } = await import('./confirm.mjs');
+
+  const { descriptor, plan } = await mirror(urlOrId, { dryRun: true });
+  console.error(`Mirror plan for ${descriptor.id.author}/${descriptor.id.slug}:`);
+  console.error(`  marketplaces: ${plan.marketplaces.new.length} new, ${plan.marketplaces.existing.length} skip`);
+  console.error(`  plugins: ${plan.plugins.new.length} new, ${plan.plugins.existing.length} skip`);
+  console.error(`  mcpServers: ${plan.mcpServers.new.length} new, ${plan.mcpServers.existing.length} skip`);
+
+  if (parsed.flags['dry-run']) {
+    console.log(JSON.stringify({ status: 'plan', plan }));
+    return;
+  }
+
+  const ok = await typedConfirm('mirror');
+  if (!ok) {
+    console.error('Aborted.');
+    process.exit(1);
+  }
+
+  const result = await mirror(urlOrId);
+  console.log(JSON.stringify({
+    status: result.status,
+    successes: result.successes.length,
+    failures: result.failures.map(f => ({ kind: f.kind, name: f.name, error: f.error })),
+  }));
+}
+
 async function main() {
   const [,, command, ...rest] = process.argv;
   if (!command) {
-    console.error('Usage: claude-setups <publish|browse> [flags]');
+    console.error('Usage: claude-setups <publish|mirror|browse> [flags]');
     process.exit(1);
   }
   const parsed = parseArgs(rest);
 
   switch (command) {
     case 'publish': await cmdPublish(parsed); break;
+    case 'mirror': await cmdMirror(parsed); break;
     case 'browse': {
       console.log('Gallery: https://adhenawer.github.io/claude-setups-registry/');
       break;
     }
     default:
       console.error(`Unknown command: ${command}`);
-      console.error('Usage: claude-setups <publish|browse> [flags]');
+      console.error('Usage: claude-setups <publish|mirror|browse> [flags]');
       process.exit(1);
   }
 }
