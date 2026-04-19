@@ -804,7 +804,7 @@ Create `/Users/adhenawer/Code/claude-setups/src/descriptor.mjs`:
 ```js
 const SCHEMA_VERSION = '1.0.0';
 const SUPPORTED_MAJOR = 1;
-const SLUG_RE = /^[a-z0-9][a-z0-9-]{2,49}$/;
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,49}$/;
 const MAX_TITLE = 80;
 const MAX_DESCRIPTION = 500;
 const MAX_TAGS = 10;
@@ -1500,7 +1500,7 @@ Expected: 6 failures — module not found.
 Create `/Users/adhenawer/Code/claude-setups-registry/scripts/validate-descriptor.mjs`:
 ```js
 const SUPPORTED_MAJOR = 1;
-const SLUG_RE = /^[a-z0-9][a-z0-9-]{2,49}$/;
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,49}$/;
 
 export function validate(d, opts = {}) {
   if (!d || typeof d !== 'object') throw new Error('descriptor not an object');
