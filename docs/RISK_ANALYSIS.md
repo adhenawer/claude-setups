@@ -112,12 +112,41 @@ GitHub's 2024 stats: **39 million leaked secrets** despite push protection, part
 
 A small project cannot out-regex that flood. **For a community-wide share mechanism, a single leak from a single user is enough to trash the tool's reputation.** The tool's whole value prop is "safe to share" — one viral leak destroys it.
 
-## Architectural conclusion
+## Architectural conclusion — two-path model
 
-claude-share **never reads values**. The collector has no code path that touches `env`, hook bodies, or `.md` content. The only content that leaves the user's machine is:
+claude-share has two transmission paths, both architecturally constrained:
+
+### Descriptor path (always on)
+
+The **descriptor collector** has no code path that touches `env`, hook bodies, `.md` content, `settings.json` as a whole, or `~/.claude.json` as a whole. The only content that leaves the user's machine via the descriptor is:
 
 1. Plugin, marketplace, and MCP **names** (identifiers)
 2. MCP `command` + `args` (not `env`), with a secret-pattern warning on `args`
 3. User-entered metadata (title, description, tags)
 
-This is **security by construction**, not by policy. The tool cannot leak a secret because it never touches one. See [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for the enforcement principles.
+This is **security by construction**, not by policy. The collector cannot leak a secret because the code to read one does not exist.
+
+### Bundle path (opt-in, default off)
+
+The **bundle builder** (used only when the user opts in) has code paths that can read:
+
+- `~/.claude/hooks/*.sh` (hook scripts)
+- `~/.claude/*.md` (global markdown at the root)
+
+Per-file approval is mandatory: for each candidate file, the CLI shows content inline and asks `keep? (y/N)`. Only approved files make it into the bundle.
+
+The bundle builder has **no code path** to read:
+
+- `settings.json` (contains `env`, hook `command` strings)
+- `~/.claude.json` (OAuth tokens, project state)
+- Any MCP `env` block
+
+These classes of content are **unreachable**, not filtered. A bug in a regex redactor couldn't accidentally leak `settings.json` because the code does not know how to put it in the bundle.
+
+### Residual user responsibility (bundle path)
+
+A user COULD approve a hook file that contains a hardcoded token, or a `CLAUDE.md` that mentions their employer. The CLI shows the content before approval, with no obfuscation. That's a choice the user makes with the content visible in front of them.
+
+The tool does not make the choice for them, and it does not silently include content they haven't seen. The failure mode is an informed-user mistake, not a tool-default leak.
+
+See [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for the enforcement principles (P1 / P1 amended / P2 / P2.1).

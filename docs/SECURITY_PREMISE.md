@@ -2,22 +2,40 @@
 
 The principles that constrain every design decision in claude-share. Each principle is enforced by architecture, not by policy — so a compliant implementation is incapable of violating them.
 
-## [P1] Never transmit values
+## [P1] Never transmit values without explicit, per-file user approval
 
-The tool collects, transmits, and stores **only identifiers** — plugin names, marketplace sources, MCP command/args, user-entered metadata. It never reads or transmits:
+The tool has two transmission paths, both subject to this principle:
 
-- Contents of any hook file
-- Contents of any `.md` file at the root of `~/.claude/`
+**Descriptor path (always):** collects, transmits, and stores only identifiers — plugin names, marketplace sources, MCP `command` + `args` (not `env`), user-entered metadata. The collector has **no code path** that reads:
+
 - `env` sections of `settings.json` or `mcpServers.*`
-- `command` strings under `settings.hooks` (only the fact that a hook exists by name, if hook-sharing is introduced in v2 — and only as a hashed reference, not a body)
+- `command` strings under `settings.hooks`
+- Contents of `settings.json` or `~/.claude.json` as whole files
 
-**Enforcement:** the collector has no code path that reads a value-containing field. You couldn't leak a secret even if you tried, because the code to do it doesn't exist.
+These things are unreachable by the descriptor builder. You could not leak them through the descriptor even if you tried, because the code to read them does not exist.
+
+**Bundle path (opt-in):** users MAY include a `.tar.gz` with specific, hand-picked files — hook scripts and global `.md` files only. The CLI presents each candidate file's content for inline approval before inclusion. The user presses `y` per file. The bundle-building code has no branch for `settings.json`, `~/.claude.json`, or MCP `env`; these are unreachable by the bundler, not just filtered.
+
+**Enforcement for both paths:** the guarantee is architectural, not regex-based. The forbidden classes of content are unreachable code paths, not filtered strings.
 
 ## [P2] Secure by construction, not by redaction
 
-Regex-based secret scanning catches ~90% of known patterns and misses the long tail. We reject that approach. The architecture **removes the category** of possible leak, rather than filtering instances.
+Regex-based secret scanning catches ~90% of known patterns and misses the long tail. We reject that approach. The architecture **removes the category** of possible leak rather than filtering instances.
 
-If a future feature wants to share richer content (e.g., a sanitized `CLAUDE.md`), it is introduced as an **explicit opt-in with preview and confirmation**, not as a default. That feature is OUT of scope for v1.
+- **Descriptor:** no value-reading code exists → zero risk of value leak.
+- **Bundle:** no `settings.json` / `.claude.json` / env-reading code exists → those categories cannot be in the bundle. The files the bundle CAN contain (hooks, `.md`) are shown verbatim to the user before inclusion — approval, not redaction.
+
+Redaction would catch fewer leaks than GitHub's own industrial-grade scanners (which missed 39M secrets in 2024). Architecture wins.
+
+## [P2.1] Bundle is opt-in, default off, user-curated
+
+The `publish` command asks once: "Include setup bundle? (N/y)". Default is No. Pressing Enter ships the descriptor only.
+
+If the user opts in, they enter an interactive file picker. For each eligible file (`hooks/*.sh`, `*.md` at `~/.claude/` root), the CLI shows the content inline and asks `keep? (y/N)`. Only approved files end up in the tar.gz.
+
+The user sees the final tarball file list (names + sizes) before publish confirmation. No background upload, no implicit content.
+
+**Trade-off acknowledged:** the bundle path slightly enlarges the user's responsibility. A user could approve a hook file that contains a hardcoded token. That's their decision, made with the content shown in front of them on their own terminal. The tool does not decide for them.
 
 ## [P3] Recipient installs identifiers, supplies values
 
@@ -71,17 +89,19 @@ v1 scope: email-based reporting, manual review. Automated moderation (anomaly de
 
 ## What these principles forbid
 
-- ❌ Uploading the raw `.tar.gz` of a setup (violates P1)
-- ❌ "Smart" redaction of hooks or `settings.env` (violates P2)
+- ❌ Uploading a `.tar.gz` that contains `settings.json`, `~/.claude.json`, or `env` sections (violates P1; these are architecturally unreachable by the bundler)
+- ❌ "Smart" redaction of hook contents or `settings.env` (violates P2 — redaction is the wrong mental model)
+- ❌ Bundling ANY file without per-file user approval (violates P2.1)
 - ❌ Forcing recipients to trust the source user's env values (violates P3)
 - ❌ Auto-generating setup descriptions from file content (violates P4)
-- ❌ Uploading without showing the user the descriptor first (violates P5)
+- ❌ Uploading without showing the user the descriptor + bundle file list first (violates P5)
 - ❌ "Delete" that just hides the URL but keeps data on the server (violates P6)
 
 ## What they permit
 
-- ✅ Sharing `{plugins: [...], marketplaces: [...], mcpServers: [{name, command, args}], title, description, tags}`
-- ✅ Installing a shared setup: run `marketplace add` + `plugin install` + `mcp add` per descriptor
+- ✅ Sharing `{plugins, marketplaces, mcpServers: [{name, command, args}], title, description, tags}` (descriptor — always safe by construction)
+- ✅ Sharing a `.tar.gz` with user-approved hook scripts + `.md` files (bundle — opt-in, per-file approval)
+- ✅ Mirroring a shared setup: descriptor → `marketplace add` + `plugin install` + `mcp add`; bundle (if present) → extract to `~/.claude/` with `.bak` backup on conflict
 - ✅ Browsing gallery anonymously
-- ✅ Rating / favoriting (anonymous read, account required to write)
-- ✅ Deleting own setup, with cascade to caches and index
+- ✅ Rating / favoriting via GitHub Issue reactions (anonymous-ish read, GitHub account required to write)
+- ✅ Deleting own setup, with cascade to canonical storage, caches, and index
