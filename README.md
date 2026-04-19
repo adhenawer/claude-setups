@@ -2,7 +2,7 @@
 
 **Discover and share Claude Code setups — the full thing: hooks, instructions, skills. Never your secrets.** Publish your setup to a community gallery; mirror someone else's with a single command. Env values, OAuth tokens, and `settings.json` are architecturally unreachable — the tool cannot transmit them, even by mistake.
 
-> **Status:** 🚧 Very early. Research + design phase. See [docs/DESIGN.md](docs/DESIGN.md), [docs/SECURITY_PREMISE.md](docs/SECURITY_PREMISE.md), [docs/RISK_ANALYSIS.md](docs/RISK_ANALYSIS.md), and [docs/PRIOR_ART.md](docs/PRIOR_ART.md).
+> **Status:** v0.1.0 — publish flow is live. Mirror command ships in v0.2 (see [roadmap](docs/superpowers/specs/2026-04-19-claude-setups-v1-design.md)).
 
 ## Premise
 
