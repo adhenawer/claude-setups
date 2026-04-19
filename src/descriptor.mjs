@@ -1,3 +1,5 @@
+import { validateSpecialties } from './specialties.mjs';
+
 const SCHEMA_VERSION = '1.0.0';
 const SUPPORTED_MAJOR = 1;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,49}$/;
@@ -5,10 +7,10 @@ const MAX_TITLE = 80;
 const MAX_DESCRIPTION = 500;
 const MAX_TAGS = 10;
 
-export function buildDescriptor(input) {
+export async function buildDescriptor(input) {
   const {
     author, slug, title, description, tags,
-    plugins, marketplaces, mcpServers, version = 1,
+    plugins, marketplaces, mcpServers, specialties, version = 1,
   } = input;
 
   if (!author) throw new Error('author is required');
@@ -24,6 +26,8 @@ export function buildDescriptor(input) {
   if (!Array.isArray(tags) || tags.length === 0 || tags.length > MAX_TAGS) {
     throw new Error(`invalid tags: must be 1-${MAX_TAGS} entries`);
   }
+  if (!specialties) throw new Error('specialties is required');
+  validateSpecialties(specialties);
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -41,6 +45,7 @@ export function buildDescriptor(input) {
     plugins,
     marketplaces,
     mcpServers,
+    specialties,
     bundle: { present: false },
   };
 }
@@ -58,6 +63,9 @@ export function validateDescriptor(d) {
   if (!d.id?.author || !d.id?.slug) throw new Error('missing id.author or id.slug');
   if (!d.title || !d.description || !Array.isArray(d.tags)) {
     throw new Error('missing metadata');
+  }
+  if (!Array.isArray(d.specialties) || d.specialties.length === 0 || d.specialties.length > 3) {
+    throw new Error('specialties must be an array of 1-3 entries');
   }
   return true;
 }

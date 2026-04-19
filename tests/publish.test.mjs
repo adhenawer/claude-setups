@@ -21,6 +21,7 @@ describe('publishViaGh', () => {
       title: 'My setup',
       description: 'desc',
       tags: ['test'],
+      specialties: ['backend'],
       registryRepo: 'adhenawer/claude-setups-registry',
       gh: mockGh,
     });
@@ -43,6 +44,7 @@ describe('publishViaGh', () => {
     await publishViaGh({
       claudeHome: FIXTURES, author: 'alice', slug: 'my-setup',
       title: 'T', description: 'D', tags: ['t'],
+      specialties: ['backend'],
       registryRepo: 'x/y', gh: mockGh,
     });
     const issueCall = ghCalls.find(c => c.args[0] === 'issue');
@@ -62,6 +64,7 @@ describe('publishViaGh', () => {
       publishViaGh({
         claudeHome: FIXTURES, author: 'a', slug: 'b-cd',
         title: 'T', description: 'D', tags: ['t'],
+        specialties: ['backend'],
         registryRepo: 'x/y', gh: failingGh,
       }),
       /gh issue create failed/i

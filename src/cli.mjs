@@ -25,11 +25,13 @@ function parseArgs(argv) {
 }
 
 async function cmdPublish(parsed) {
-  const { title, description, tags, author, slug, 'registry-repo': registryRepo } = parsed.flags;
-  if (!title || !description || !tags || !author || !slug) {
-    console.error('Error: publish requires --title, --description, --tags, --author, --slug');
+  const { title, description, tags, author, slug,
+    'registry-repo': registryRepo, specialties } = parsed.flags;
+  if (!title || !description || !tags || !author || !slug || !specialties) {
+    console.error('Error: publish requires --title, --description, --tags, --author, --slug, --specialties');
     console.error('Example: claude-setups publish --author alice --slug my-setup \\');
-    console.error('           --title "My setup" --description "desc" --tags py,backend');
+    console.error('           --title "My setup" --description "desc" \\');
+    console.error('           --tags py,backend --specialties backend,devops');
     process.exit(1);
   }
 
@@ -44,6 +46,7 @@ async function cmdPublish(parsed) {
     title,
     description,
     tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+    specialties: specialties.split(',').map(s => s.trim()).filter(Boolean),
     registryRepo: registry,
   });
 

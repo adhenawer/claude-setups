@@ -26,6 +26,7 @@ describe('E2E: publish flow (with injected gh, simulating registry ingest)', () 
       title: 'E2E test setup',
       description: 'Full round-trip smoke test',
       tags: ['e2e', 'smoke'],
+      specialties: ['backend'],
       registryRepo: 'x/y',
       gh: mockGh,
     });

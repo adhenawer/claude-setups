@@ -16,14 +16,14 @@ import { runGh } from './gh.mjs';
  */
 export async function publishViaGh(opts) {
   const {
-    claudeHome, author, slug, title, description, tags,
+    claudeHome, author, slug, title, description, tags, specialties,
     registryRepo,
     gh = runGh,
   } = opts;
 
   const collected = await collect(claudeHome);
-  const descriptor = buildDescriptor({
-    author, slug, title, description, tags,
+  const descriptor = await buildDescriptor({
+    author, slug, title, description, tags, specialties,
     plugins: collected.plugins,
     marketplaces: collected.marketplaces,
     mcpServers: collected.mcpServers,
