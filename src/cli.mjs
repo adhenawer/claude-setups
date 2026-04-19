@@ -93,10 +93,24 @@ async function cmdMirror(parsed) {
   }));
 }
 
+async function cmdRevoke(parsed) {
+  const { author, slug, 'registry-repo': registryRepo } = parsed.flags;
+  if (!author || !slug) {
+    console.error('Error: revoke requires --author and --slug');
+    process.exit(1);
+  }
+  const { revokeViaGh } = await import('./revoke.mjs');
+  const result = await revokeViaGh({
+    author, slug,
+    registryRepo: registryRepo || 'adhenawer/claude-setups-registry',
+  });
+  console.log(JSON.stringify(result));
+}
+
 async function main() {
   const [,, command, ...rest] = process.argv;
   if (!command) {
-    console.error('Usage: claude-setups <publish|mirror|browse> [flags]');
+    console.error('Usage: claude-setups <publish|mirror|revoke|browse> [flags]');
     process.exit(1);
   }
   const parsed = parseArgs(rest);
@@ -104,13 +118,14 @@ async function main() {
   switch (command) {
     case 'publish': await cmdPublish(parsed); break;
     case 'mirror': await cmdMirror(parsed); break;
+    case 'revoke': await cmdRevoke(parsed); break;
     case 'browse': {
       console.log('Gallery: https://adhenawer.github.io/claude-setups-registry/');
       break;
     }
     default:
       console.error(`Unknown command: ${command}`);
-      console.error('Usage: claude-setups <publish|mirror|browse> [flags]');
+      console.error('Usage: claude-setups <publish|mirror|revoke|browse> [flags]');
       process.exit(1);
   }
 }
