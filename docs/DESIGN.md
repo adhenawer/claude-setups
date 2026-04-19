@@ -108,7 +108,7 @@ npx -y claude-setups browse
 npx -y claude-setups revoke abc123
 ```
 
-All commands output pretty text on a TTY and JSON when piped (same pattern as claude-snapshot 0.3.0). Also installable as a Claude Code plugin with equivalent slash commands: `/share:publish`, `/share:mirror`, `/share:browse`, `/share:revoke`.
+All commands output pretty text on a TTY and JSON when piped (same pattern as claude-snapshot 0.3.0). Also installable as a Claude Code plugin with equivalent slash commands: `/setups:publish`, `/setups:mirror`, `/setups:browse`, `/setups:revoke`.
 
 ## Publish flow
 
@@ -237,6 +237,7 @@ Enforced by code structure (see [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for t
 
 ## Resolved decisions
 
+- ✅ **Name:** `claude-setups` (npm package + GitHub repo + CLI binary). `claude-share` was taken on npm (tviles/claude-share, Gist-based); `claude-setups` reinforces the gallery-first positioning ("a collection of setups"). Tagline: *"Discover and share Claude Code setups — safely."*
 - ✅ **Hosting:** GitHub-only. Issues for submission + Actions for validation + repo JSON tree for storage + Pages for gallery. No other backend.
 - ✅ **Publish UX:** `gh` CLI primary; browser Issue Form as fallback when the user declines to install `gh`.
 - ✅ **Artifact model:** descriptor-only. No tarballs, no binary attachments, no file contents transmitted. Shared setups are composed of public building blocks (plugins, marketplaces, MCPs).
@@ -250,7 +251,7 @@ Enforced by code structure (see [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for t
 2. **Tag taxonomy:** Free-form or from a moderated list?
 3. **Content moderation:** Email reports + `/report` issue comments. Any automated pre-publish scanning (flag `args` matching secret patterns)?
 4. **Versioning:** If a user republishes an updated setup, is it a new ID or a version of the old one?
-5. **Naming:** Keep `claude-setups`? Or something more evocative? (`claudehub`, `showcc`, etc.)
+5. ~~**Naming:**~~ Resolved → `claude-setups` (see Resolved decisions).
 6. **Relation to existing awesome lists:** Integrate (auto-submit to upstream) or compete?
 7. **Discovery API:** Stable `/s/<id>.json` for machine consumption — yes (cheap, just serve the file from Pages).
 8. **License on shared descriptors:** CC0, MIT, or something permissive-but-attribution?
@@ -258,9 +259,9 @@ Enforced by code structure (see [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for t
 
 Resolve priority, biggest first:
 
-1. **#5 naming** — needed before anything public.
-2. **#9 packaging-as-plugin flow** — required for the "my setup has custom hooks" user story.
-3. **#2, #3, #4 scope cuts** — YAGNI review of taxonomy, moderation, versioning.
+1. **#9 packaging-as-plugin flow** — required for the "my setup has custom hooks" user story.
+2. **#2, #3, #4 scope cuts** — YAGNI review of taxonomy, moderation, versioning.
+3. **#7 discovery API** — quick confirm then move on.
 
 ## Base reuse from claude-snapshot
 
