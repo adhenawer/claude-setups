@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "plugins": {
+    "superpowers@claude-plugins-official": [
+      { "version": "5.0.7", "scope": "user" }
+    ],
+    "context7@claude-plugins-official": [
+      { "version": "1.2.0", "scope": "user" }
+    ],
+    "internal-tool@company-marketplace": [
+      { "version": "0.1.0", "scope": "project", "projectPath": "/Users/someone/work/secret-project" }
+    ]
+  }
+}

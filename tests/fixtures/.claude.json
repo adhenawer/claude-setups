@@ -1,0 +1,16 @@
+{
+  "oauthAccount": "MUST_NOT_LEAK",
+  "projects": { "some-path": { "allowedTools": ["Bash"] } },
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-filesystem"],
+      "env": { "LEAK_SENTINEL": "should-not-travel" }
+    },
+    "git": {
+      "command": "uvx",
+      "args": ["mcp-server-git"],
+      "env": {}
+    }
+  }
+}
