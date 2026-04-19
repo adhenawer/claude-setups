@@ -1,42 +1,55 @@
 # claude-setups
 
-**Discover and share Claude Code setups — safely.** Publish a descriptor of your plugins, MCP servers, and marketplaces to the community gallery; mirror someone else's setup with a single command. No config values, no file contents, no secrets ever leave your machine.
+**Discover and share Claude Code setups — the full thing: hooks, instructions, skills. Never your secrets.** Publish your setup to a community gallery; mirror someone else's with a single command. Env values, OAuth tokens, and `settings.json` are architecturally unreachable — the tool cannot transmit them, even by mistake.
 
 > **Status:** 🚧 Very early. Research + design phase. See [docs/DESIGN.md](docs/DESIGN.md), [docs/SECURITY_PREMISE.md](docs/SECURITY_PREMISE.md), [docs/RISK_ANALYSIS.md](docs/RISK_ANALYSIS.md), and [docs/PRIOR_ART.md](docs/PRIOR_ART.md).
 
 ## Premise
 
-Unlike a full backup/restore tool (see sibling project [claude-snapshot](https://github.com/adhenawer/claude-snapshot)), **claude-setups never reads any of your configuration files**. It publishes only the *identifiers* of the public things you have configured — plugin names, marketplace sources, MCP server commands (without `env`).
+Sharing a Claude Code setup today means dumping your `~/.claude/` into a public GitHub repo with zero review — exactly how the industry leaked **39 million secrets on GitHub in 2024**. Plugin marketplaces solve part of it, but only for things you already packaged as plugins. Your custom hooks, your carefully-tuned `CLAUDE.md`, your personal skills — those still live in raw files.
 
-This is **secure by construction**: the code to read your secrets does not exist.
+**claude-setups** splits the problem into two architectural layers:
+
+1. **Values and tokens are architecturally unreachable.** `settings.json`, `~/.claude.json`, every `env` section, MCP tokens — the tool has no code path that reads them. They cannot travel.
+2. **Content files (hooks, `CLAUDE.md`, skills) ARE shared** — but only after you see every file, run secret-regex scans, and type `publish` to confirm.
+
+This is not redaction. It's a hard split between "architecturally cannot leak" and "you reviewed it and approved".
 
 ## Is this safe to run?
 
-Short answer: **yes, and you don't have to take our word for it**. Here's literally everything that leaves your machine when you run `claude-setups publish`:
+The goal of this section is to remove every reason to be afraid of clicking publish.
 
-1. **Plugin identifiers** — e.g. `superpowers@claude-plugins-official` (version `5.0.7`). Public info. Anyone can install the same plugins themselves.
-2. **Marketplace sources** — e.g. `github.com/anthropics/claude-plugins-official`. Public GitHub URLs.
-3. **MCP server identifiers** — server `name`, the `command` (e.g. `uvx`), and the `args` (e.g. `["mcp-server-supabase"]`). Install recipe, no credentials.
-4. **The title, description, and tags you type** at the publish prompt.
+### What the tool CAN read and may share
 
-That's it. The full list fits in 4 bullets because that's **all the code can read**.
+Only these, and only after you see each one in a preview screen:
 
-Before anything is uploaded, the tool shows you the complete descriptor JSON on one screen and asks you to confirm. There is no "background upload", no opaque blob, no tarball.
+- **Plugin + marketplace identifiers** from `~/.claude/plugins/*` — plugin names, marketplace sources, versions. Public info; anyone can install the same plugins themselves.
+- **MCP server name + `command` + `args`** from `~/.claude.json`'s `mcpServers` key — **never `env`**.
+- **Hook scripts** (`~/.claude/hooks/*.sh`) — file contents, shown fully in preview before include/exclude.
+- **Global markdown** (`~/.claude/CLAUDE.md`, other `*.md` at the root) — shown fully in preview.
+- **Custom skills / commands / agents** (`~/.claude/skills/*`, `commands/*`, `agents/*`) — shown fully in preview.
+- **The title, description, and tags you type** at the publish prompt.
 
-### What the tool CANNOT read (even if you asked it to)
+Every file is:
+1. Shown to you with size, path, and content preview.
+2. Scanned by a **secret-pattern regex** (API keys, bearer tokens, private keys). Any match is flagged with line numbers. You can edit the file and re-run, or exclude it.
+3. Toggleable per-file: default `include = yes`, you can press `n` to exclude any file.
+4. Summarized in a final preview screen before publish.
+5. Gated behind typing the word `publish` — a single `y` is not enough. The typed word is deliberate friction so nobody uploads on autopilot.
 
-- ❌ `settings.json` — contains `env` (API keys), hook `command` strings. **No code path exists to read this file.**
+### What the tool CANNOT read (ever, even if you asked it to)
+
+- ❌ `~/.claude/settings.json` — contains `env` (API keys), hook `command` strings. **No code path exists to read this file.**
 - ❌ `~/.claude.json` — contains OAuth tokens, project state. **No code path exists to read this file.**
-- ❌ Hook script bodies (`~/.claude/hooks/*.sh`) — can contain hardcoded tokens. **No code path exists to read these.**
-- ❌ Global markdown files (`~/.claude/CLAUDE.md`, etc.) — can contain company names, internal paths. **No code path exists to read these.**
-- ❌ MCP `env` blocks (service tokens, DB URLs). **No code path exists to read these.**
-- ❌ Absolute filesystem paths — the descriptor format has no fields where a path could appear.
+- ❌ `env` sections of `mcpServers.*` — service tokens, database URLs. **No code path exists to read these.**
+- ❌ `settings.hooks.*.command` strings (different from hook script files) — can inline tokens. **No code path exists to read these.**
+- ❌ Absolute filesystem paths inside any file — the bundler strips `$HOME` during assembly; the descriptor format has no field where an absolute path could appear.
 
-This is **security by construction, not by redaction**. Regex-based secret scanning (the approach GitHub uses) missed 39 million secrets leaked on GitHub in 2024. We use a stronger guarantee: the forbidden code paths do not exist. Adding one would be a security-critical PR, reviewed as such.
+These are **security by construction, not by redaction**. GitHub's industrial-grade regex scanners missed 39M secrets in 2024 — a small project cannot win by regex alone. So we don't try: the dangerous categories live in code paths that don't exist. Adding one would be a security-critical PR, reviewed as such.
 
 ## How mirroring works
 
-One command; the sender's env values never existed in the payload to begin with:
+One command; the sender's secrets never existed in the payload to begin with, and hook/`.md` files arrive with `.bak` backup on any conflict:
 
 ```bash
 npx -y claude-setups mirror https://claude-setups.dev/s/abc123
@@ -44,17 +57,16 @@ npx -y claude-setups mirror https://claude-setups.dev/s/abc123
 
 The tool:
 
-1. Fetches the descriptor JSON from the URL.
-2. Shows the install plan: "N plugins to install, M MCPs to add, K marketplaces to register. X already installed locally (will skip)."
-3. On your confirmation, runs:
-   - `claude marketplace add <source>` for each marketplace
-   - `claude plugin install <name>@<marketplace>` for each plugin
-   - `claude mcp add <name> <command> <args>` for each MCP
-4. Prompts you to supply your own env values for each MCP that needs them (the sender never sent any).
+1. Fetches the descriptor JSON + (if any) the bundle `.tar.gz` from the URL.
+2. Shows the full install plan: plugins, MCPs, marketplaces, bundle files — with local-vs-incoming diff and per-file conflict preview.
+3. You type `mirror` to confirm.
+4. Installs identifiers idempotently: `claude marketplace add`, `claude plugin install`, `claude mcp add` (skipping anything already present at the requested version).
+5. Extracts bundle files into `~/.claude/`, backing up any existing file as `<name>.bak` before overwriting. Hook scripts get `chmod +x`.
+6. Prompts you to supply your own env values for each MCP that needs them (the sender never sent any).
 
-**Idempotent:** re-running mirror on the same URL is a no-op for anything already installed. Safe to retry after partial failures.
+**Idempotent:** re-running mirror on the same URL is safe. Already-installed plugins and already-extracted files (detected by SHA-256) are skipped.
 
-**Reproducible:** descriptor freezes each plugin's exact version, so mirroring 6 months from now installs the same versions the publisher exported.
+**Reproducible:** descriptor freezes each plugin's exact version, so mirroring months later installs the same versions the publisher exported.
 
 ## How publishing works
 
@@ -64,40 +76,28 @@ Primary path (recommended) — with the [GitHub CLI](https://cli.github.com):
 npx -y claude-setups publish
 ```
 
-The tool reads `~/.claude/` (identifiers only), asks for title/description/tags, shows the full descriptor JSON on one screen, and on your confirmation creates a GitHub issue on the registry repo. A Github Action validates the schema and commits the descriptor into the public gallery.
+The tool walks you through: read sources → enter metadata → see secret-regex warnings → file-by-file include/exclude → final preview → type `publish`. Creates a GitHub issue on the registry repo; a GitHub Action validates and moves the content into the public gallery.
 
-Fallback path (no `gh` CLI) — opens a browser with a prefilled GitHub Issue Form for manual submission.
+Fallback path (no `gh` CLI) — opens a browser with a prefilled GitHub Issue Form for descriptor-only submission (bundle support requires `gh` for clean binary push).
 
-Everything is GitHub-backed: no separate server, no external service, no account system beyond your GitHub account.
-
-## "But I want to share my custom hook / CLAUDE.md"
-
-Totally valid — and here's the clean path:
-
-1. Package your custom hook or CLAUDE.md template as a standalone Claude Code plugin (its own repo with a `.claude-plugin/plugin.json`).
-2. Publish it to any marketplace (your own GitHub repo is enough).
-3. Reference that plugin in your claude-setups descriptor.
-
-Now it's shareable **and** reusable **and** versioned. Other users mirror your setup and get your hook as an installable plugin, not a raw script they had to trust.
-
-The constraint that "shared setups are composed of public building blocks" pushes everyone's customizations toward good packaging hygiene. This is a feature, not a limitation.
+Everything is GitHub-backed: no separate server, no external service, no account beyond your GitHub account.
 
 ## Relation to claude-snapshot
 
 | | [claude-snapshot](https://github.com/adhenawer/claude-snapshot) | claude-setups |
 |---|---|---|
-| Unit of transfer | `.tar.gz` with full file contents (including `settings.json`, MCP env, hooks, CLAUDE.md) | JSON descriptor (identifiers only) |
 | Destination | private (your own machines) | public (community gallery) |
-| Reads any file with values or content | yes (by design for local backup) | **no — no code path exists** |
-| Can transmit a secret even if you ask it to | yes (it's your tarball, your risk) | **no — the code to do it doesn't exist** |
-| Privacy model | local-only (no network) | secure-by-construction |
+| Reads `settings.json` / `~/.claude.json` | yes, fully | **no — no code path exists** |
+| Can leak `env` values or OAuth tokens | yes (it's your local tarball) | **no — code to read them doesn't exist** |
+| Shares hook scripts / `CLAUDE.md` | yes, automatically | **yes, but with per-file preview + regex + typed confirm** |
+| Privacy model | local-only (no network) | architectural exclusion + mandatory user review |
 | Primary use case | backup, restore, multi-machine sync | discovery, showcase, one-command mirror |
 
-Both tools can coexist. claude-snapshot is the personal "save state" for your own machines; claude-setups is the "post to community" surface.
+Both tools can coexist. claude-snapshot is the personal "save state" for your own machines (trust yourself with your own secrets); claude-setups is the "post to community" surface (the tool cannot leak secrets, and you review every file before publish).
 
 ## Status
 
-Active design, not yet implemented. Research and architectural premise are documented in [`docs/`](docs/). Implementation will reuse base utilities from claude-snapshot where applicable (see [`docs/DESIGN.md` § Base reuse](docs/DESIGN.md#base-reuse-from-claude-snapshot)).
+Active design, not yet implemented. Research and architectural premise are documented in [`docs/`](docs/). Implementation will reuse base utilities from claude-snapshot where applicable — notably the tarball build/extract and `.bak`-backup apply logic (see [`docs/DESIGN.md` § Base reuse](docs/DESIGN.md#base-reuse-from-claude-snapshot)).
 
 ## License
 

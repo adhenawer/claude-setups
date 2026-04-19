@@ -1,13 +1,13 @@
 # Design (early draft)
 
-> **Status:** Model locked — descriptor-only sharing ("setups composed of public building blocks"). No file contents ever transmitted, by construction. Hosting locked (GitHub-only). Publish UX locked (`gh` CLI primary, browser fallback). Mirror works via idempotent public-install commands. Not a final spec yet. Security premise is [locked](SECURITY_PREMISE.md).
+> **Status:** Model locked — content-first sharing ("full setup including hooks, CLAUDE.md, skills; never env values or tokens"). Two-layer safety: architectural exclusion for secrets, user-reviewed preview for content. Hosting locked (GitHub-only). Publish UX locked (`gh` CLI primary, browser fallback). Mirror extracts content with `.bak` backup. Not a final spec yet. Security premise is [locked](SECURITY_PREMISE.md).
 
 ## Product shape
 
 **claude-setups** is a two-part product:
 
 1. **CLI tool + Claude Code plugin** (npm package, distributable via `npx`, also installable as a Claude Code plugin) with commands `publish`, `mirror`, `browse`, `revoke`. Same underlying logic in both surfaces.
-2. **Community gallery** — 100% GitHub-hosted: Issues for submission, a JSON tree in the repo for storage, GitHub Pages for rendering, GitHub Actions for validation + moderation glue. No other backend, no serverless, no external services.
+2. **Community gallery** — 100% GitHub-hosted: Issues for submission, a JSON tree + bundle tarballs in the repo for storage, GitHub Pages for rendering, GitHub Actions for validation + moderation glue. No other backend, no serverless, no external services.
 
 ## Architecture (locked)
 
@@ -19,11 +19,11 @@ claude-setups-registry/
 │   ├── ISSUE_TEMPLATE/
 │   │   └── setup-submission.yml      # structured form fallback for no-gh users
 │   └── workflows/
-│       ├── ingest.yml                # on issue_opened: validate, commit to data/, close
+│       ├── ingest.yml                # on issue_opened: validate descriptor + bundle, commit to data/, close
 │       └── moderate.yml              # on issue_comment: handle report flow
 ├── data/
-│   └── setups/<slug>.json            # canonical descriptor per published setup
-│                                     # (no bundles — descriptors are self-contained)
+│   ├── setups/<slug>.json            # descriptor (plugins, marketplaces, MCPs, metadata)
+│   └── bundles/<slug>.tar.gz         # content files: hooks, .md, skills, commands, agents
 ├── site/                             # GitHub Pages source (static gallery)
 │   ├── index.html
 │   ├── setup.html
@@ -35,23 +35,32 @@ Data flow:
 
 ```
 npx claude-setups publish
-  └─→ (primary) gh CLI → creates issue with descriptor body
-  └─→ (fallback) opens browser to prefilled Issue Form URL; user submits manually
+  └─→ collects descriptor (identifiers) + candidate bundle files (hooks, .md, skills, ...)
+  └─→ NEVER collects: settings.json, .claude.json, env values, MCP env
+  └─→ runs secret-pattern regex on every candidate file
+  └─→ file-by-file preview (default Y, user can exclude anything)
+  └─→ user types `publish` to confirm
+  └─→ (primary) gh CLI → creates issue with descriptor body + pushes bundle as commit to temp branch
+  └─→ (fallback) opens browser to prefilled Issue Form URL; descriptor only (bundle requires gh CLI)
 
   ↓
 
-Issue opened → Action validates descriptor → commits data/setups/<slug>.json
+Issue opened → Action validates descriptor schema + bundle contents (no disallowed paths/files)
+             → commits data/setups/<slug>.json + (if present) moves bundle to data/bundles/<slug>.tar.gz
              → closes issue, comments with public URL
              → GitHub Pages auto-rebuilds gallery
 ```
 
-**The descriptor is the only artifact.** No tarballs, no binary attachments, no file contents. A descriptor is a JSON file with plugin/marketplace/MCP identifiers and user metadata — nothing that the user wrote as content ever leaves their machine.
+**Two artifacts, per published setup:**
 
-## CLI surface (v1 draft)
+1. **Descriptor** (JSON) — plugins + marketplaces + MCP identifiers + user metadata. Always published.
+2. **Bundle** (`.tar.gz`) — hook scripts, `.md` files, custom skills / commands / agents that passed the user-review step. Optional; if the user excluded every candidate file during preview, the bundle is empty and the setup is pure-descriptor.
+
+The bundle never contains `settings.json`, `~/.claude.json`, MCP env, or any env value — those are architecturally unreachable by the bundler (see [SECURITY_PREMISE.md § P1](SECURITY_PREMISE.md)).
 
 ## Descriptor format (v1 draft)
 
-The unit of sharing. Stored as JSON, served at a stable URL.
+The descriptor is served at a stable URL; the bundle (if any) is served at a sibling URL.
 
 ```json
 {
@@ -86,11 +95,20 @@ The unit of sharing. Stored as JSON, served at a stable URL.
       "args": ["mcp-server-supabase"],
       "method": "pip"
     }
-  ]
+  ],
+  "bundle": {
+    "present": true,
+    "url": "https://claude-setups.dev/s/abc123/bundle.tar.gz",
+    "files": [
+      { "path": "hooks/auto-stage.sh", "size": 412, "sha256": "..." },
+      { "path": "CLAUDE.md", "size": 3104, "sha256": "..." },
+      { "path": "skills/pr-review/SKILL.md", "size": 1820, "sha256": "..." }
+    ]
+  }
 }
 ```
 
-**Not in descriptor:** `env` (any level), hook bodies, `CLAUDE.md` content, absolute paths.
+**Never in descriptor or bundle:** `env` values at any level, `settings.json`, `~/.claude.json`, `settings.hooks.*.command` strings, absolute filesystem paths (all paths in the bundle are relative to `~/.claude/`).
 
 ## CLI surface (v1 draft)
 
@@ -117,19 +135,46 @@ All commands output pretty text on a TTY and JSON when piped (same pattern as cl
 ```
 1. CLI checks `gh --version`. Present → continue. Checks `gh auth status`; if
    not logged in, runs `gh auth login`.
-2. CLI reads ~/.claude/ for plugins + marketplaces, and ~/.claude.json for
-   mcpServers (command + args only, never env).
-3. CLI prompts inline (readline):
+2. CLI reads the DESCRIPTOR SOURCES:
+     ~/.claude/ for plugins + marketplaces (identifiers only)
+     ~/.claude.json for mcpServers (command + args only, never env)
+3. CLI reads the BUNDLE CANDIDATE SOURCES (file paths + content):
+     ~/.claude/hooks/*.sh
+     ~/.claude/*.md at the root (CLAUDE.md, etc.)
+     ~/.claude/skills/*  (if any)
+     ~/.claude/commands/* (if any)
+     ~/.claude/agents/*   (if any)
+   NEVER reads: settings.json, ~/.claude.json as a whole, MCP env blocks,
+   settings.hooks command strings, any absolute path (other than for stripping
+   $HOME during path-relativization).
+4. CLI prompts inline (readline):
      "Title? Description? Tags (comma-separated)?"
      "Author handle?" (pre-filled from `gh api user`)
-4. CLI shows the full descriptor JSON that will be uploaded. One screen.
-   This is EXACTLY what goes public — no surprises.
-5. CLI asks: "Publish? (y/n)"
-6. On y, `gh issue create` with descriptor as body; issue has label
-   `setup:submission`.
-7. Action validates the descriptor schema, commits data/setups/<slug>.json,
-   closes the issue with a comment containing the public URL.
-8. CLI prints the public URL and the one-line mirror command for others.
+5. CLI runs SECRET-PATTERN REGEX on every candidate file. Matches trigger
+   warnings: "hooks/rtk.sh:12: looks like a token. Preview and edit before
+   publish, or exclude this file."
+6. CLI enters INTERACTIVE FILE PREVIEW:
+     - For each candidate file, shows: path, size, regex-match count,
+       first N lines of content (full content viewable by pressing 'v').
+     - Asks: "include? (Y/n)" — default Y, user can exclude anything.
+     - Excluded files are not in the final bundle.
+7. CLI shows the FULL PREVIEW screen:
+     - Descriptor JSON (what will be public)
+     - Bundle file list with sizes (what will be extracted on mirror)
+     - Total bundle size
+     - Any remaining regex warnings the user chose to ignore
+8. CLI asks: "Type `publish` to confirm." (a short y/Enter is NOT enough)
+9. On `publish`:
+     a. `gh issue create` with descriptor body + label `setup:submission`
+     b. If bundle non-empty: push bundle as commit to a temp branch
+        `bundle/<temp-id>` via `gh api repos/<owner>/<registry>/git`
+        (binary-safe). Issue body references the bundle location.
+10. Action validates descriptor schema + bundle structure (no disallowed
+    files, no absolute paths, no settings.json at root, etc.), moves
+    canonical files into data/setups/<slug>.json + data/bundles/<slug>.tar.gz,
+    deletes the temp branch, closes the issue with a comment containing
+    the public URL.
+11. CLI prints the public URL and the one-line mirror command for others.
 ```
 
 **Fallback path — no `gh` CLI (user declines to install):**
@@ -137,38 +182,48 @@ All commands output pretty text on a TTY and JSON when piped (same pattern as cl
 ```
 1. CLI detects `gh` missing. Prints:
      "Best UX requires the GitHub CLI: https://cli.github.com.
-      Install it for the scripted flow, or press Enter to continue with
-      browser-based submission."
-2. User presses Enter. CLI generates the descriptor locally.
+      Install it for the scripted flow (including bundle support), or
+      press Enter to continue with browser-based submission (descriptor
+      only — no bundle, since browser submission can't push binary
+      attachments cleanly)."
+2. User presses Enter. CLI generates the descriptor locally (no bundle
+   collection in this path).
 3. CLI opens browser with a prefilled Issue Form URL targeting the registry
-   repo. Metadata fields (title / description / tags) are blank; the
-   descriptor JSON is pre-filled in a textarea.
+   repo. Metadata fields (title/description/tags) are blank; the descriptor
+   JSON is pre-filled in a textarea.
 4. User completes the form in the browser and submits.
-5. Same Action path from step 7 above.
+5. Same Action path from step 10 above (no bundle move; only descriptor).
 ```
 
-Both paths publish exactly the same artifact: a descriptor. No additional flags, no binary attachments, no per-file approval UX.
+Primary path publishes descriptor + bundle. Fallback path publishes descriptor only.
 
 ## Mirror flow
 
 ```
 1. User runs `claude-setups mirror <url>`.
 2. CLI fetches the descriptor JSON from <url>.
-3. CLI shows the install plan:
+3. If descriptor.bundle.present, CLI fetches the bundle tarball.
+4. CLI shows the install plan:
      "This setup installs N plugins, M MCP servers, from K marketplaces."
+     "Bundle: B files totaling T KB — will extract into ~/.claude/."
      "Already installed locally: X plugins, Y MCPs. Will skip those (idempotent)."
-     "New to install: A plugins, B MCPs."
-     "MCPs needing env values after install: names listed, with empty-template guidance."
-4. CLI asks: "Mirror? (y/n)"
-5. On y, execute in order (idempotent pre-checks + sequential):
-     a. For each marketplace: `claude marketplace add <source>` (skip if already present)
-     b. For each plugin: `claude plugin install <name>@<marketplace>` (skip if already installed at requested version)
-     c. For each MCP: `claude mcp add <name> <command> <args>`; after add,
-        prompt user to supply env values interactively, or leave placeholders
-        for the user to fill in their own ~/.claude.json later.
-6. CLI reports per-step result (ok / already-present / failed) and a summary.
+     "New to install: A plugins, C MCPs, D files from bundle."
+     "Conflicts: files named Z already exist — will be backed up as .bak."
+     "MCPs needing env values after install: names listed."
+5. CLI asks: "Type `mirror` to confirm." (typed word, not just y)
+6. On `mirror`, execute in order (idempotent pre-checks + sequential):
+     a. For each marketplace: `claude marketplace add <source>` (skip if present)
+     b. For each plugin: `claude plugin install <name>@<marketplace>`
+        (skip if already installed at the requested version)
+     c. For each MCP: `claude mcp add <name> <command> <args>`; prompt user
+        to supply env values interactively, or leave placeholders.
+     d. If bundle present: extract files into ~/.claude/, with .bak backup
+        on any conflict (reuses claude-snapshot's applySnapshot apply logic).
+        Hook scripts are chmod +x after extraction.
+7. CLI reports per-step result (ok / already-present / failed) and a summary.
    On partial failure, the user can re-run mirror safely (each step is
-   idempotent; already-applied steps are skipped).
+   idempotent; already-applied steps and already-extracted files are skipped
+   based on sha256 match).
 ```
 
 ## Idempotency + atomicity
@@ -177,24 +232,30 @@ Both paths publish exactly the same artifact: a descriptor. No additional flags,
 - **Atomicity:** mirror is sequential with pre-checks; on failure of any single step, the CLI reports clearly and stops (does NOT auto-rollback — that is its own class of risk). Because the flow is idempotent, the user fixes the underlying issue and re-runs; already-applied steps are skipped naturally.
 - **Reproducibility:** each plugin entry in the descriptor includes an explicit `version`; mirroring 6 months later installs the same version the publisher exported, even if the plugin has evolved since.
 
-## Setups are composed of public building blocks
+## What gets shared — two layers of safety
 
-The descriptor can only reference things that are **already publicly installable**:
+**Layer 1: Architecturally unreachable (never shared, not even by user request):**
 
-- Plugins from public marketplaces (anyone can install without credentials)
-- Marketplaces from public GitHub repos (anonymously cloneable)
-- MCP servers whose `command` + `args` are runnable from public package registries (npm, PyPI, etc.) or public binaries
+- `settings.json` (full file) — contains `env`, hook command strings
+- `~/.claude.json` (full file) — OAuth tokens, project state
+- `env` sections of `settings.json` or `mcpServers.*` (any level)
+- `settings.hooks.*.command` strings
+- Absolute filesystem paths (stripped to `$HOME`-relative during bundling)
 
-This is what makes the mirror flow safe-by-construction. Nothing private about the publisher's machine is referenced; everything in the descriptor is something a third party could have installed on their own by reading the identifiers.
+The tool has no code that reads these. They cannot leak even if the user asks.
 
-**What about custom private hooks or a personal `CLAUDE.md`?** They don't travel in a descriptor. Users who want to share those customizations have a clean path: package them as a plugin (public, installable, versioned) and reference the plugin in the descriptor. The claude-setups ecosystem nudges users toward that hygiene rather than transmitting arbitrary file contents.
+**Layer 2: Reviewed content (shared by default, with mandatory preview):**
 
-**Why this constraint is not a limitation but a feature:**
+- Hook scripts (`~/.claude/hooks/*.sh`) — full file contents
+- Global markdown (`~/.claude/CLAUDE.md`, `~/.claude/*.md` at root) — full contents
+- Custom skills (`~/.claude/skills/*`)
+- Custom slash commands (`~/.claude/commands/*`)
+- Custom agents (`~/.claude/agents/*`)
+- Descriptor identifiers (plugins, marketplaces, MCP name/command/args) + user-entered metadata
 
-1. Zero risk of leaking secrets — there is no code path that reads files containing values.
-2. Gallery entries are fast to render and fast to mirror.
-3. Mirrors compose from the same ecosystem of public plugins the publisher used, reinforcing the marketplace network effect.
-4. Custom work worth sharing is worth packaging properly.
+Every layer-2 file is shown to the user in the preview step, scanned by secret-pattern regex, toggleable per file, and publish is gated by a typed `publish` confirmation.
+
+**The user-facing trade-off:** the product shares what makes a setup interesting to share (hooks, instructions, skills), while the architecturally-dangerous categories (secrets, tokens, OAuth) cannot travel even by mistake. The user accepts responsibility for the content they review-and-approve; the tool accepts responsibility for surfacing every piece before the publish becomes possible.
 
 ## GitHub primitives used
 
@@ -228,59 +289,63 @@ Explicitly NOT in v1:
 
 ## Security posture recap
 
-Enforced by code structure (see [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for the principles):
+Enforced by code structure + mandatory UX (see [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for principles):
 
-- Collector has NO code path reading `env`, hook bodies, or `.md` content.
-- Publish step shows descriptor pre-upload, requires explicit `y`.
-- API schema validates only the allowed fields; extra fields are silently dropped server-side.
-- Descriptors are publicly readable; the DB row is author-owned so authors can delete.
+- Collector has NO code path reading `settings.json`, `~/.claude.json`, `env` values, or `settings.hooks.*.command`.
+- Bundle builder can read hook bodies, `.md`, skills/commands/agents — but every file passes through user preview + regex scan before inclusion.
+- Publish is gated by typed `publish` confirmation — no single-keystroke upload.
+- Server-side Action validates descriptor schema + rejects bundles containing disallowed paths (e.g. `settings.json`, `.claude.json`, anything with an absolute path).
+- Descriptors + bundles are publicly readable; DB row (repo commit) is author-owned so authors can delete.
 
 ## Resolved decisions
 
 - ✅ **Name:** `claude-setups` (npm package + GitHub repo + CLI binary). `claude-share` was taken on npm (tviles/claude-share, Gist-based); `claude-setups` reinforces the gallery-first positioning ("a collection of setups"). Tagline: *"Discover and share Claude Code setups — safely."*
 - ✅ **Hosting:** GitHub-only. Issues for submission + Actions for validation + repo JSON tree for storage + Pages for gallery. No other backend.
 - ✅ **Publish UX:** `gh` CLI primary; browser Issue Form as fallback when the user declines to install `gh`.
-- ✅ **Artifact model:** descriptor-only. No tarballs, no binary attachments, no file contents transmitted. Shared setups are composed of public building blocks (plugins, marketplaces, MCPs).
-- ✅ **Mirror command:** `claude-setups mirror <url>` — fetches descriptor, shows install plan with idempotent pre-checks, runs `claude marketplace add` + `claude plugin install` + `claude mcp add` sequentially.
+- ✅ **Artifact model:** descriptor + optional bundle. Descriptor carries identifiers; bundle carries user-reviewed hook scripts, `.md` files, skills, commands, agents. `settings.json`, `~/.claude.json`, and env values are architecturally unreachable — not redacted, just never read.
+- ✅ **Publish UX:** file-by-file preview mandatory + secret-pattern regex on each candidate + typed `publish` to confirm. Default include = Y, user can exclude anything.
+- ✅ **Mirror command:** `claude-setups mirror <url>` — fetches descriptor + bundle, shows plan, runs `claude marketplace add` + `claude plugin install` + `claude mcp add` + extracts bundle files with `.bak` backup on conflict.
 - ✅ **Idempotency/atomicity:** each Claude Code install command is idempotent; mirror is sequential with pre-checks; partial failure is reported; re-running is safe.
 - ✅ **Authentication:** GitHub-only (via `gh auth` for CLI, via issue attribution for browser fallback). No separate account system.
 
 ## Open questions
 
-1. **Rate limits:** How many publishes per day per author? (abuse protection; GitHub's built-in rate limits + additional check in the ingest Action)
-2. **Tag taxonomy:** Free-form or from a moderated list?
-3. **Content moderation:** Email reports + `/report` issue comments. Any automated pre-publish scanning (flag `args` matching secret patterns)?
-4. **Versioning:** If a user republishes an updated setup, is it a new ID or a version of the old one?
-5. ~~**Naming:**~~ Resolved → `claude-setups` (see Resolved decisions).
-6. **Relation to existing awesome lists:** Integrate (auto-submit to upstream) or compete?
-7. **Discovery API:** Stable `/s/<id>.json` for machine consumption — yes (cheap, just serve the file from Pages).
-8. **License on shared descriptors:** CC0, MIT, or something permissive-but-attribution?
-9. **How to package custom hooks / CLAUDE.md as plugins:** documentation/tooling to help users elevate their personal customizations into shareable public plugins.
+1. **Bundle transport mechanics:** via `gh` CLI, pushing the bundle as a commit to a temp branch is the plan — need to prototype the exact flow (how to delete the temp branch on failure, how the Action picks it up).
+2. **Rate limits:** How many publishes per day per author? (abuse protection; GitHub's built-in rate limits + additional check in the ingest Action)
+3. **Tag taxonomy:** Free-form or from a moderated list?
+4. **Content moderation:** Email reports + `/report` issue comments. Any automated pre-publish scanning beyond the client-side regex (server-side double-check with a stronger pattern set)?
+5. **Versioning:** If a user republishes an updated setup, is it a new ID or a version of the old one?
+6. ~~**Naming:**~~ Resolved → `claude-setups`.
+7. **Relation to existing awesome lists:** Integrate (auto-submit to upstream) or compete?
+8. **Discovery API:** Stable `/s/<id>.json` for machine consumption — yes (cheap, just serve the file from Pages). Same for `/s/<id>/bundle.tar.gz`.
+9. **License on shared descriptors + bundles:** CC0, MIT, or something permissive-but-attribution?
+10. **Secret regex pattern set:** start with AWS keys, GitHub tokens, OpenAI keys, generic `bearer` + `apikey=` + `token=` patterns. Where's the curated source we can reuse?
 
 Resolve priority, biggest first:
 
-1. **#9 packaging-as-plugin flow** — required for the "my setup has custom hooks" user story.
-2. **#2, #3, #4 scope cuts** — YAGNI review of taxonomy, moderation, versioning.
-3. **#7 discovery API** — quick confirm then move on.
+1. **#1 bundle transport mechanics** — blocks implementation of publish/mirror.
+2. **#10 regex pattern set** — blocks the user-preview UX.
+3. **#3, #4, #5 scope cuts** — YAGNI review of taxonomy, moderation, versioning.
+4. **#8 discovery API** — quick confirm then move on.
 
 ## Base reuse from claude-snapshot
 
-Directly reusable:
+Heavily reusable — the content-first model overlaps with claude-snapshot's apply path significantly:
 
 - `classifyMcpMethod()` — maps MCP commands to install-method identifiers for the descriptor.
 - Plugin filter for `scope: 'user'` — drops project-scoped plugins that contain absolute paths.
+- **Tarball build/extract** — `tar.create` on publish (bundle assembly from approved files), `tar.extract` on mirror.
+- **`applySnapshot`-like write-with-`.bak`** — reused verbatim for mirror-side bundle extraction: write file, back up existing, chmod +x for hooks.
+- **Path normalization** (`normalizePaths` with `$HOME`) — applied during bundle assembly so paths inside hook contents become `$HOME`-relative, then resolved on the mirror machine.
 - Node.js ESM + `node:test` + no-transpile publish pattern.
 - `package.json` + `.gitignore` skeleton.
 - CI matrix (`.github/workflows/test.yml`), macOS + Linux × Node 18/20/22.
 - Pretty-vs-JSON output helper (`shouldOutputJson`, `writeOutput`) from snapshot 0.3.0.
 
-NOT reused (scope doesn't apply to descriptor-only):
+NOT reused (explicitly out of scope):
 
-- Tarball build/extract pipeline — no tarballs in claude-setups.
-- `applySnapshot`-like write-with-`.bak` logic — no file writing; mirror invokes `claude plugin install` etc. which manage their own state.
-- Path normalization across user homes — no paths in a descriptor.
-- `settings.json` / `.claude.json` read — the collector has no code path to read these files.
-- Full `~/.claude/` capture — out of scope entirely.
+- `settings.json` / `.claude.json` read — claude-setups has no code path that reads these files, even though claude-snapshot does. This is the ONE place where the two tools deliberately diverge, and it's the entire security story of claude-setups.
+- Full `~/.claude/` capture — the bundler reads only allowlisted subdirectories (`hooks/`, `skills/`, `commands/`, `agents/`) and the root `*.md` files; nothing else.
 
 ## Next steps
 

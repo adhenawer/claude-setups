@@ -1,46 +1,60 @@
 # Security Premise
 
-The principles that constrain every design decision in claude-setups. Each principle is enforced by architecture, not by policy — so a compliant implementation is incapable of violating them.
+The principles that constrain every design decision in claude-setups. Each principle is enforced by architecture where possible, and by mandatory user review where not. A compliant implementation is incapable of violating the architectural principles, even if the user asks it to.
 
-## [P1] Never transmit values or file contents
+## Two safety layers
 
-The tool collects, transmits, and stores **only identifiers** — plugin names, marketplace sources, MCP `command` + `args` (not `env`), user-entered metadata. The collector has **no code path** that reads:
+1. **Architectural** — certain categories of content are unreachable by the tool's code. These cannot be shared even by mistake, even by malicious intent, even if the user explicitly asks.
+2. **Informed user review** — the content categories the tool CAN read (hooks, markdown, skills) are shown to the user file-by-file with full preview and secret-pattern warnings before any upload. The user must type `publish` to confirm.
+
+The split is deliberate. The hard-secret categories (env values, OAuth tokens, API keys) go in layer 1; the useful-but-potentially-identifying categories (hook scripts, CLAUDE.md, skill prompts) go in layer 2. This matches what users actually want to share while maintaining the strongest possible guarantee on the categories that matter most.
+
+## [P1] Values and tokens are architecturally unreachable
+
+The tool has **no code path** that reads any of these:
 
 - `env` sections of `settings.json` or `mcpServers.*`
-- `command` strings under `settings.hooks`
-- Contents of `settings.json` or `~/.claude.json` as whole files
-- Hook file bodies (`~/.claude/hooks/*.sh`)
-- Global `.md` file contents (`~/.claude/CLAUDE.md`, etc.)
+- `command` strings under `settings.hooks` (these can inline secrets; different from hook FILE bodies)
+- `settings.json` as a whole file
+- `~/.claude.json` as a whole file
+- MCP `env` blocks
 
-These are unreachable by the descriptor builder. You could not leak them even if you tried, because the code to read them does not exist. This is enforced at the source level — any PR that adds such a code path is a security-critical review, not a flag toggle.
+These are unreachable by the collector. You could not leak them even if you tried, because the code to read them does not exist. Adding such a code path is a security-critical review — not a flag toggle.
 
-## [P2] Secure by construction, not by redaction
+This is the strongest guarantee the tool makes. The categories in P1 are where secrets live (API keys, OAuth tokens, database URLs, company-internal hostnames); GitHub reported **39 million secrets leaked on their platform in 2024** despite industrial-grade regex scanning. Architecture is the only guarantee strong enough.
 
-Regex-based secret scanning catches ~90% of known patterns and misses the long tail. We reject that approach. The architecture **removes the category** of possible leak rather than filtering instances.
+## [P2] Content files are user-reviewed, not auto-uploaded
 
-- No value-reading code exists → zero risk of value leak.
-- No file-content-reading code exists → zero risk of accidentally shipping a hook body or a personal `CLAUDE.md`.
-- Redaction would catch fewer leaks than GitHub's own industrial-grade scanners (which missed 39M secrets in 2024). Architecture wins.
+The tool CAN read (and does share, by default) these categories:
 
-## [P2.1] Setups are composed of public building blocks only
+- Hook scripts (`~/.claude/hooks/*.sh`) — full file contents
+- Global markdown (`~/.claude/CLAUDE.md`, `~/.claude/*.md` at the root) — full file contents
+- Custom skills (`~/.claude/skills/*`) — skill directories
+- Custom slash commands (`~/.claude/commands/*`) — command files
+- Custom agents (`~/.claude/agents/*`) — agent files
 
-The descriptor references only things that are already publicly installable: plugins from public marketplaces, MCPs from public package registries, marketplaces hosted on public GitHub repos.
+Every file in these categories is subject to **mandatory user review** during `publish`:
 
-Custom private hooks or a personal `CLAUDE.md` are NOT shareable via claude-setups. The clean path for users who want to share customizations is to package them as a plugin (public, installable, versioned) and reference that plugin in the descriptor.
+1. CLI lists every file that would be included, with size and content preview.
+2. For each file, CLI runs a **secret-pattern regex** (API keys, bearer tokens, private keys, common env-var patterns). Matches are flagged with line numbers and surrounding context.
+3. User toggles `include? (Y/n)` per file (default Y, can exclude anything).
+4. CLI shows the final bundle summary: descriptor JSON + list of included files + total size.
+5. User types `publish` to confirm. A short `y` or Enter is NOT enough — the typed word is deliberate friction so nobody publishes on autopilot.
 
-This constraint is intentional:
+## [P2.1] Informed-user-risk acknowledged
 
-- It eliminates the entire class of "did I accidentally share a secret hook?" fears.
-- It nudges the ecosystem toward well-packaged public plugins.
-- It makes mirrors deterministic and fast (no file extraction, no conflict handling).
+A user can still approve a hook file that contains a hardcoded token, or a `CLAUDE.md` that mentions their employer. The regex warning is best-effort; the preview shows full content. **The tool does not decide for the user; it shows the user everything with enough friction to force attention.**
 
-## [P3] Recipient installs identifiers, supplies values
+This is the stated trade-off: the tool moves from "cannot leak by design" (impossible to achieve while making the product useful) to "cannot leak the hard-secret categories by design, plus forces full review of everything else". The user bears responsibility for the content they approve; the tool bears responsibility for surfacing every piece of it before the publish button becomes active.
 
-When a user installs someone else's setup:
+## [P3] Recipient installs identifiers and extracts files, supplies own values
 
-- `claude marketplace add <source>` runs with public marketplace info
-- `claude plugin install <name>` runs with public plugin info
-- `claude mcp add <name> <command> <args>` runs, but **prompts the recipient to supply their own env values** (or leaves placeholders that the recipient fills in their own `.claude.json`)
+When a user mirrors someone else's setup:
+
+- `claude marketplace add <source>` runs with public marketplace info (idempotent)
+- `claude plugin install <name>` runs with public plugin info (idempotent)
+- `claude mcp add <name> <command> <args>` runs, then **prompts the recipient to supply their own env values** for MCPs that need them
+- Bundle files (hooks, `.md`, skills, commands, agents) are extracted into the recipient's `~/.claude/` with `.bak` backup on any conflict
 
 The recipient's credentials never touch the source user, and the source user's credentials were never transmitted in the first place.
 
@@ -48,17 +62,23 @@ The recipient's credentials never touch the source user, and the source user's c
 
 User-entered metadata (title, description, tags) is shared verbatim. Users are responsible for what they type.
 
-We **do not auto-extract** metadata from user files — no "let me read your `CLAUDE.md` and write a description for you" flow in v1. Too much surface for accidental inclusion.
+The tool **does not auto-extract** metadata from user files — no "let me read your `CLAUDE.md` and write a description for you" flow in v1. The user writes their own description.
 
-## [P5] Auditable descriptor
+## [P5] Auditable preview before publish
 
-Before publish, the tool shows the **exact descriptor** that will be uploaded. One screen. Plain JSON. The user presses "Publish" only after reading it. No background upload, no opaque blob.
+Before anything is uploaded, the tool shows:
+
+1. The exact descriptor JSON that will be published.
+2. The complete list of bundle files with their content previews.
+3. Any regex warnings with line numbers.
+
+The user confirms by typing `publish`. No background upload, no opaque blob, no hidden content.
 
 ## [P6] Revocable, with real propagation
 
 A published setup can be deleted by its author. The gallery honors deletion and cascades to:
 
-- Cached mirrors
+- Canonical repo storage (descriptor + bundle removed)
 - CDN invalidation
 - Search index removal
 
@@ -68,7 +88,7 @@ If the URL is ever scraped or cached externally (archive.org, GitHub clones, scr
 
 ## [P7] No account to browse, account to publish
 
-Browsing the gallery requires no login — read-only anonymous access, so casual visitors don't need to register. Publishing requires a lightweight account (GitHub OAuth sufficient) to enable:
+Browsing the gallery requires no login — read-only anonymous access. Publishing requires a GitHub account (via `gh` CLI or browser OAuth on the Issue Form) to enable:
 
 - Attribution on the detail page
 - Author-controlled deletion
@@ -76,29 +96,31 @@ Browsing the gallery requires no login — read-only anonymous access, so casual
 
 ## [P8] Moderation escalation path
 
-Every published setup has a "Report" button. The documented paths:
+Every published setup has a "Report" button. Documented paths:
 
 - **User reports a setup contains sensitive info** → immediate takedown, notify author
 - **Author disputes that their own content was exposed without consent** → takedown, log
 - **Platform (GitHub / legal / DMCA) report** → comply, log
 
-v1 scope: email-based reporting, manual review. Automated moderation (anomaly detection, spam filters) comes later as the gallery grows.
+v1 scope: email-based reporting + `/report` issue comments, manual review. Automated moderation comes later.
 
 ## What these principles forbid
 
-- ❌ Transmitting `.tar.gz` (or any binary) containing user file contents (violates P1; such content is architecturally unreachable by the collector)
-- ❌ Reading `settings.json`, `~/.claude.json`, hook bodies, or `.md` file contents (violates P1 — the code does not exist)
-- ❌ "Smart" redaction of any content (violates P2 — redaction is the wrong mental model)
+- ❌ Reading `settings.json`, `~/.claude.json`, env values, or MCP env (violates P1 — no code path exists)
+- ❌ Reading `settings.hooks.*.command` strings (violates P1 — can inline secrets)
+- ❌ Auto-including any file without user review (violates P2)
+- ❌ Allowing "publish" on a single-keystroke confirmation (violates P2 — requires typing the word)
+- ❌ Skipping the regex warning even if the user asks (violates P2 — warning is informational, not blocking, but always shown)
 - ❌ Forcing recipients to trust the source user's env values (violates P3)
 - ❌ Auto-generating setup descriptions from file content (violates P4)
-- ❌ Uploading without showing the user the full descriptor JSON first (violates P5)
-- ❌ "Delete" that just hides the URL but keeps data on the server (violates P6)
+- ❌ Uploading without full preview (violates P5)
+- ❌ "Delete" that hides the URL but keeps data (violates P6)
 
 ## What they permit
 
-- ✅ Sharing `{plugins, marketplaces, mcpServers: [{name, command, args}], title, description, tags}` (descriptor — safe by construction)
-- ✅ Mirroring a shared setup: descriptor → `claude marketplace add` + `claude plugin install` + `claude mcp add` (idempotent, sequential)
+- ✅ Sharing the descriptor (plugins + marketplaces + MCP names/command/args + user metadata) — always safe by construction
+- ✅ Sharing hook scripts, `CLAUDE.md`, skills, commands, and agents — with mandatory per-file preview + regex warning + typed confirmation
+- ✅ Mirroring a shared setup: install identifiers + extract bundle files with `.bak` backup on conflict
 - ✅ Browsing gallery anonymously
 - ✅ Rating / favoriting via GitHub Issue reactions (anonymous-ish read, GitHub account required to write)
-- ✅ Deleting own setup, with cascade to canonical storage, caches, and index
-- ✅ Packaging a custom hook or personal `CLAUDE.md` as a standalone plugin first, then referencing it in a descriptor (the canonical "I want to share my customization" flow)
+- ✅ Deleting own setup with cascade

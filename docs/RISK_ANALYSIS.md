@@ -97,14 +97,17 @@ Title, description, tags — explicit opt-in by user typing them in the `publish
 
 | Field | Content risk | Architectural decision |
 |---|---|---|
-| `settings.env.*` values | API keys, tokens | **Never transmit** |
-| `settings.hooks.*.command` strings | Inline secrets, internal URLs | **Never transmit** (keep hook identity only, not command body) |
-| `hooks/*.sh` file bodies | Full script content | **Never transmit** |
-| MCP `env.*` values | Service tokens | **Never transmit** |
-| `CLAUDE.md` / other `.md` full content | Identifying info | **Never transmit by default**; opt-in with preview for v2+ |
-| `installed_plugins.json` identifiers | Plugin + marketplace names | Safe to transmit |
-| MCP `command` + `args` (non-env) | Install command | Safe to transmit (with secret-pattern warning on `args`) |
-| User title/description/tags | What user typed | Transmit verbatim (user owns it) |
+| `settings.env.*` values | API keys, tokens | **Architecturally unreachable** — no code path reads this |
+| `settings.hooks.*.command` strings | Inline secrets, internal URLs | **Architecturally unreachable** — the bundler reads hook FILES, not the `command` strings in `settings.json` |
+| `settings.json` as a whole | Contains the above | **Architecturally unreachable** — no code reads this file |
+| MCP `env.*` values | Service tokens | **Architecturally unreachable** — `mcpServers` is read, then the `env` key is dropped before the tree is traversed |
+| `~/.claude.json` as a whole | OAuth tokens + project state | **Architecturally unreachable** — only the `mcpServers` key is extracted |
+| `hooks/*.sh` file bodies | Full script content | **User-reviewed:** included by default, shown in preview with regex scan, toggleable per file |
+| `CLAUDE.md` / other `.md` | Personal instructions, identifying info | **User-reviewed:** same flow as hooks |
+| `skills/*` / `commands/*` / `agents/*` | Custom prompts, logic | **User-reviewed:** same flow as hooks |
+| `installed_plugins.json` identifiers (user scope) | Plugin + marketplace names | Safe — public info |
+| MCP `command` + `args` (non-env) | Install command | Safe with secret-pattern warning on `args` |
+| User title/description/tags | What user typed | Transmit verbatim — user owns it |
 
 ## Why regex-based redaction is not enough
 
@@ -112,33 +115,43 @@ GitHub's 2024 stats: **39 million leaked secrets** despite push protection, part
 
 A small project cannot out-regex that flood. **For a community-wide share mechanism, a single leak from a single user is enough to trash the tool's reputation.** The tool's whole value prop is "safe to share" — one viral leak destroys it.
 
-## Architectural conclusion — single descriptor-only path
+## Architectural conclusion — two-layer model
 
-claude-setups has exactly one transmission path. The descriptor collector has **no code path** that touches:
+claude-setups has two transmission paths with sharply different guarantees:
+
+### Layer 1: Architecturally unreachable (never shared)
+
+The collector has **no code path** that reads:
 
 - `env` sections of `settings.json` or `mcpServers.*`
 - `command` strings under `settings.hooks`
 - `settings.json` or `~/.claude.json` as whole files
-- Hook file bodies (`~/.claude/hooks/*.sh`)
-- Global markdown file contents (`~/.claude/CLAUDE.md`, etc.)
 
-The only content that leaves the user's machine is:
+These cannot leak. The code to read them does not exist. Adding such a code path would be a security-critical review — not a flag toggle. This covers the categories where the 39M-per-year secret leaks happen.
 
-1. Plugin, marketplace, and MCP **names** (public identifiers)
-2. MCP `command` + `args` (not `env`), with a secret-pattern warning on `args`
-3. User-entered metadata (title, description, tags)
+### Layer 2: User-reviewed (shared with preview + regex + typed confirm)
 
-This is **security by construction**, not by policy. The collector cannot leak a value or a file body because the code to read either does not exist. Adding such a code path would be a security-critical review — not a flag toggle.
+The bundler CAN read (and by default includes):
 
-### What about personal customizations?
+- Hook scripts (`~/.claude/hooks/*.sh`)
+- Global markdown (`~/.claude/CLAUDE.md`, other `*.md` at root)
+- Custom skills, slash commands, and agents (`~/.claude/skills/*`, `commands/*`, `agents/*`)
 
-A user with a custom hook script or a personal `CLAUDE.md` **cannot share them directly** through claude-setups. That is intentional, not a gap.
+Every file passes through mandatory preview with per-file include/exclude toggle + secret-pattern regex warning. The user types `publish` to confirm — no single-keystroke upload.
 
-The clean path for sharing a customization is: package it as a Claude Code plugin (public, installable, versioned) and reference that plugin in your descriptor. The claude-setups ecosystem nudges users toward this hygiene — it's better for everyone than broadcasting raw file contents.
+### Why split this way?
+
+Hook bodies and `CLAUDE.md` are what make a setup interesting to share. A list of plugin names is a catalog; the actual custom hook is the value. Descriptor-only would be safe but thin. Two-layer preserves the safety where it matters (tokens/OAuth/env never leave) and enables the useful sharing (content with informed consent).
+
+### What the user is responsible for
+
+A user can approve a hook file that contains a hardcoded token, or a `CLAUDE.md` that mentions their employer. The regex is best-effort; the preview shows full content. The tool surfaces every character; the user decides whether each file goes public.
+
+This is a defensible position: the tool prevents the 39M-leaks category (regex-hard, architecturally-easy) and forces a thoughtful human review on the remainder.
 
 ### Residual risk: the MCP `args` field
 
-The one area where a determined user could still leak content is by inlining secrets into MCP `args` values (e.g. `args: ["--token=abc123"]`). This is unusual but possible. Mitigation:
+A determined user could inline secrets into MCP `args` values (e.g. `args: ["--token=abc123"]`). This is unusual but possible. Mitigation:
 
 - The `publish` flow runs a secret-pattern regex over each `args` value
 - Any match prompts the user: "`args[2]` looks like a secret. Replace with a placeholder or confirm it's safe?"
