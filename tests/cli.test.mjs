@@ -29,3 +29,23 @@ describe('CLI dispatch', () => {
     assert.match(r.stderr, /title|required/i);
   });
 });
+
+describe('CLI dispatch (v0.2 commands)', () => {
+  it('mirror without URL prints error', () => {
+    const r = spawnSync('node', [CLI, 'mirror'], { encoding: 'utf-8' });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /URL|author/i);
+  });
+
+  it('revoke without flags prints error', () => {
+    const r = spawnSync('node', [CLI, 'revoke'], { encoding: 'utf-8' });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /author.*slug|required/i);
+  });
+
+  it('unknown command still errors after v0.2 additions', () => {
+    const r = spawnSync('node', [CLI, 'unknowncmd'], { encoding: 'utf-8' });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /Unknown command/i);
+  });
+});
