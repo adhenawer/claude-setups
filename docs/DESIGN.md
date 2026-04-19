@@ -303,30 +303,33 @@ Enforced by code structure + mandatory UX (see [SECURITY_PREMISE.md](SECURITY_PR
 - ✅ **Hosting:** GitHub-only. Issues for submission + Actions for validation + repo JSON tree for storage + Pages for gallery. No other backend.
 - ✅ **Publish UX:** `gh` CLI primary; browser Issue Form as fallback when the user declines to install `gh`.
 - ✅ **Artifact model:** descriptor + optional bundle. Descriptor carries identifiers; bundle carries user-reviewed hook scripts, `.md` files, skills, commands, agents. `settings.json`, `~/.claude.json`, and env values are architecturally unreachable — not redacted, just never read.
-- ✅ **Publish UX:** file-by-file preview mandatory + secret-pattern regex on each candidate + typed `publish` to confirm. Default include = Y, user can exclude anything.
+- ✅ **Publish UX:** file-by-file preview mandatory + **gitleaks regex on each candidate** + typed `publish` to confirm. Default include = Y, user can exclude anything.
+- ✅ **Bundle transport:** `gh` CLI pushes the bundle tarball as a commit to a temp branch `bundle/<temp-id>`; Action on issue_opened validates + moves to `data/bundles/<slug>.tar.gz` + deletes the temp branch. Single code path; no base64-in-body shortcut. Temp-branch approach handles any realistic bundle size.
+- ✅ **Regex pattern set:** [gitleaks](https://github.com/gitleaks/gitleaks) TOML config (150+ detectors). Bundled as a data file in the CLI, ported to JS regex at startup. Upstream updates land via PR. Server-side Action runs the same rules as a double-check.
 - ✅ **Mirror command:** `claude-setups mirror <url>` — fetches descriptor + bundle, shows plan, runs `claude marketplace add` + `claude plugin install` + `claude mcp add` + extracts bundle files with `.bak` backup on conflict.
 - ✅ **Idempotency/atomicity:** each Claude Code install command is idempotent; mirror is sequential with pre-checks; partial failure is reported; re-running is safe.
 - ✅ **Authentication:** GitHub-only (via `gh auth` for CLI, via issue attribution for browser fallback). No separate account system.
 
 ## Open questions
 
-1. **Bundle transport mechanics:** via `gh` CLI, pushing the bundle as a commit to a temp branch is the plan — need to prototype the exact flow (how to delete the temp branch on failure, how the Action picks it up).
+1. ~~**Bundle transport mechanics:**~~ Resolved → **commit to temp branch**. CLI pushes bundle to `bundle/<temp-id>` via `gh api repos/<owner>/<registry>/git/refs`; Action on issue_opened validates + moves tarball to `data/bundles/<slug>.tar.gz` + deletes the temp branch. Single code path; handles any bundle size up to GitHub's per-file limit (100MB, far above any realistic setup).
 2. **Rate limits:** How many publishes per day per author? (abuse protection; GitHub's built-in rate limits + additional check in the ingest Action)
 3. **Tag taxonomy:** Free-form or from a moderated list?
-4. **Content moderation:** Email reports + `/report` issue comments. Any automated pre-publish scanning beyond the client-side regex (server-side double-check with a stronger pattern set)?
+4. **Content moderation:** Email reports + `/report` issue comments. Server-side double-check with the same gitleaks pattern set as client-side, so manipulated-client attempts are caught at ingest.
 5. **Versioning:** If a user republishes an updated setup, is it a new ID or a version of the old one?
 6. ~~**Naming:**~~ Resolved → `claude-setups`.
 7. **Relation to existing awesome lists:** Integrate (auto-submit to upstream) or compete?
 8. **Discovery API:** Stable `/s/<id>.json` for machine consumption — yes (cheap, just serve the file from Pages). Same for `/s/<id>/bundle.tar.gz`.
 9. **License on shared descriptors + bundles:** CC0, MIT, or something permissive-but-attribution?
-10. **Secret regex pattern set:** start with AWS keys, GitHub tokens, OpenAI keys, generic `bearer` + `apikey=` + `token=` patterns. Where's the curated source we can reuse?
+10. ~~**Secret regex pattern set:**~~ Resolved → **gitleaks**. Use [gitleaks/config](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml) (150+ community-curated detectors, TOML-configurable). Bundle the TOML as a data file in the CLI package; port to JS regex at startup; update by PR when upstream releases new patterns. Double-check server-side in the ingest Action using the same rules.
 
-Resolve priority, biggest first:
+Resolve priority (remaining):
 
-1. **#1 bundle transport mechanics** — blocks implementation of publish/mirror.
-2. **#10 regex pattern set** — blocks the user-preview UX.
-3. **#3, #4, #5 scope cuts** — YAGNI review of taxonomy, moderation, versioning.
-4. **#8 discovery API** — quick confirm then move on.
+1. **#4 moderation pipeline + #10 server-side double-check** — biggest security lever left.
+2. **#3, #5 scope cuts** — YAGNI review of taxonomy, versioning.
+3. **#8 discovery API** — quick confirm then move on.
+4. **#7 awesome-list integration** — strategic, can wait.
+5. **#9 license** — pick one before launch.
 
 ## Base reuse from claude-snapshot
 
