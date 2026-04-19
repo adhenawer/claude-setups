@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": { "author": "alice", "slug": "demo-setup" },
+  "version": 1,
+  "title": "Demo setup",
+  "description": "For tests",
+  "tags": ["test"],
+  "author": { "handle": "alice", "url": "https://github.com/alice" },
+  "createdAt": "2026-04-19T00:00:00Z",
+  "license": "MIT",
+  "plugins": [
+    { "name": "superpowers", "marketplace": "claude-plugins-official", "version": "5.0.7" }
+  ],
+  "marketplaces": [
+    { "name": "claude-plugins-official", "source": "github", "repo": "anthropics/claude-plugins-official" }
+  ],
+  "mcpServers": [
+    { "name": "filesystem", "command": "npx", "args": ["-y", "@anthropic/mcp-filesystem"], "method": "npm" }
+  ],
+  "specialties": ["backend"],
+  "bundle": { "present": false }
+}
