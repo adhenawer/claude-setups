@@ -2,7 +2,7 @@
 
 **Discover and share Claude Code setups — the full thing: hooks, instructions, skills. Never your secrets.** Publish your setup to a community gallery; mirror someone else's with a single command. Env values, OAuth tokens, and `settings.json` are architecturally unreachable — the tool cannot transmit them, even by mistake.
 
-> **Status:** v0.1.0 — publish flow is live. Mirror command ships in v0.2 (see [roadmap](docs/superpowers/specs/2026-04-19-claude-setups-v1-design.md)).
+> **Status:** v0.2.0 — publish + mirror + revoke are live. Bundles (hooks, CLAUDE.md, skills) ship in v0.3 (see [roadmap](docs/superpowers/specs/2026-04-19-claude-setups-v1-design.md)).
 
 ## Premise
 
@@ -52,7 +52,11 @@ These are **security by construction, not by redaction**. GitHub's industrial-gr
 One command; the sender's secrets never existed in the payload to begin with, and hook/`.md` files arrive with `.bak` backup on any conflict:
 
 ```bash
-npx -y claude-setups mirror https://claude-setups.dev/s/abc123
+# Short form (resolves against the default registry)
+npx -y claude-setups mirror alice/demo-setup
+
+# Full URL form
+npx -y claude-setups mirror https://adhenawer.github.io/claude-setups-registry/s/alice/demo-setup.json
 ```
 
 The tool:
