@@ -305,31 +305,32 @@ Enforced by code structure + mandatory UX (see [SECURITY_PREMISE.md](SECURITY_PR
 - ✅ **Artifact model:** descriptor + optional bundle. Descriptor carries identifiers; bundle carries user-reviewed hook scripts, `.md` files, skills, commands, agents. `settings.json`, `~/.claude.json`, and env values are architecturally unreachable — not redacted, just never read.
 - ✅ **Publish UX:** file-by-file preview mandatory + **gitleaks regex on each candidate** + typed `publish` to confirm. Default include = Y, user can exclude anything.
 - ✅ **Bundle transport:** `gh` CLI pushes the bundle tarball as a commit to a temp branch `bundle/<temp-id>`; Action on issue_opened validates + moves to `data/bundles/<slug>.tar.gz` + deletes the temp branch. Single code path; no base64-in-body shortcut. Temp-branch approach handles any realistic bundle size.
-- ✅ **Regex pattern set:** [gitleaks](https://github.com/gitleaks/gitleaks) TOML config (150+ detectors). Bundled as a data file in the CLI, ported to JS regex at startup. Upstream updates land via PR. Server-side Action runs the same rules as a double-check.
+- ✅ **Regex pattern set:** [gitleaks](https://github.com/gitleaks/gitleaks) TOML config (150+ detectors). Bundled as a data file in the CLI, ported to JS regex at startup. Upstream updates land via PR.
+- ✅ **Moderation pipeline:** **client-side only** for the regex scan (no server-side double-check — GitHub Pages is pure static frontend, and we keep server compute minimal). Attacker modifying the CLI to skip the scan is a known residual risk, mitigated by the post-hoc moderation path (P8: user reports → manual review → takedown). v1 acceptable trade-off.
+- ✅ **Tag taxonomy:** free-form on input; server-side Action canonicalizes common aliases (`py → python`, `JS → javascript`, `CC → claude-code`) via a small YAML map in the registry repo. Unknown tags pass through unchanged.
+- ✅ **Versioning:** each setup has a stable ID derived from author handle + slug. Republish creates a new version under the same ID. Gallery shows latest version by default with a "history" toggle exposing prior versions. Each user is identified by their GitHub handle (already unique globally).
+- ✅ **License for shared descriptors + bundles:** MIT (consistent with claude-snapshot, permissive, familiar to developers). Declared in each descriptor and in a top-level `LICENSE` file in the registry repo.
+- ✅ **Discovery API:** stable public URLs — `https://claude-setups.dev/s/<id>.json` (descriptor), `https://claude-setups.dev/s/<id>/bundle.tar.gz` (bundle, if any), `https://claude-setups.dev/s/<id>/v/<version>.json` (historical version). All served statically from GitHub Pages via the registry's `data/` tree.
 - ✅ **Mirror command:** `claude-setups mirror <url>` — fetches descriptor + bundle, shows plan, runs `claude marketplace add` + `claude plugin install` + `claude mcp add` + extracts bundle files with `.bak` backup on conflict.
 - ✅ **Idempotency/atomicity:** each Claude Code install command is idempotent; mirror is sequential with pre-checks; partial failure is reported; re-running is safe.
 - ✅ **Authentication:** GitHub-only (via `gh auth` for CLI, via issue attribution for browser fallback). No separate account system.
 
-## Open questions
+## Open questions (remaining)
 
-1. ~~**Bundle transport mechanics:**~~ Resolved → **commit to temp branch**. CLI pushes bundle to `bundle/<temp-id>` via `gh api repos/<owner>/<registry>/git/refs`; Action on issue_opened validates + moves tarball to `data/bundles/<slug>.tar.gz` + deletes the temp branch. Single code path; handles any bundle size up to GitHub's per-file limit (100MB, far above any realistic setup).
-2. **Rate limits:** How many publishes per day per author? (abuse protection; GitHub's built-in rate limits + additional check in the ingest Action)
-3. **Tag taxonomy:** Free-form or from a moderated list?
-4. **Content moderation:** Email reports + `/report` issue comments. Server-side double-check with the same gitleaks pattern set as client-side, so manipulated-client attempts are caught at ingest.
-5. **Versioning:** If a user republishes an updated setup, is it a new ID or a version of the old one?
-6. ~~**Naming:**~~ Resolved → `claude-setups`.
-7. **Relation to existing awesome lists:** Integrate (auto-submit to upstream) or compete?
-8. **Discovery API:** Stable `/s/<id>.json` for machine consumption — yes (cheap, just serve the file from Pages). Same for `/s/<id>/bundle.tar.gz`.
-9. **License on shared descriptors + bundles:** CC0, MIT, or something permissive-but-attribution?
-10. ~~**Secret regex pattern set:**~~ Resolved → **gitleaks**. Use [gitleaks/config](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml) (150+ community-curated detectors, TOML-configurable). Bundle the TOML as a data file in the CLI package; port to JS regex at startup; update by PR when upstream releases new patterns. Double-check server-side in the ingest Action using the same rules.
+All v1-blocking questions are resolved. Remaining items are post-v1 strategic considerations:
 
-Resolve priority (remaining):
+1. **Rate limits:** How many publishes per day per author? v1 relies on GitHub's built-in API rate limits (~5000/hour authenticated). Additional per-user limit in the ingest Action is deferred to v1.1 if abuse appears.
+2. ~~**Naming:**~~ Resolved → `claude-setups`.
+3. ~~**Tag taxonomy:**~~ Resolved → free-form with server-side aliasing.
+4. ~~**Content moderation:**~~ Resolved → client-side regex only, post-hoc takedown via reports.
+5. ~~**Versioning:**~~ Resolved → author/slug stable ID, versions tracked.
+6. **Relation to existing awesome lists:** Integrate (auto-submit to upstream) or compete? Deferred — revisit after v1 gallery has content to evaluate.
+7. ~~**Discovery API:**~~ Resolved → static URLs via Pages.
+8. ~~**License:**~~ Resolved → MIT.
+9. ~~**Bundle transport:**~~ Resolved → temp branch.
+10. ~~**Regex pattern set:**~~ Resolved → gitleaks.
 
-1. **#4 moderation pipeline + #10 server-side double-check** — biggest security lever left.
-2. **#3, #5 scope cuts** — YAGNI review of taxonomy, versioning.
-3. **#8 discovery API** — quick confirm then move on.
-4. **#7 awesome-list integration** — strategic, can wait.
-5. **#9 license** — pick one before launch.
+**All blockers resolved — ready to write the formal spec.**
 
 ## Base reuse from claude-snapshot
 
