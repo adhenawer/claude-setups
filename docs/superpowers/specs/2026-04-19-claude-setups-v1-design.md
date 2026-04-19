@@ -165,6 +165,7 @@ Served at `https://claude-setups.dev/s/<author>/<slug>.json`:
       "method": "pip"
     }
   ],
+  "specialties": ["backend", "data-engineer"],
   "bundle": {
     "present": true,
     "url": "https://claude-setups.dev/s/alice/python-supabase-fullstack/bundle.tar.gz",
@@ -178,12 +179,40 @@ Served at `https://claude-setups.dev/s/<author>/<slug>.json`:
 }
 ```
 
+**Specialty taxonomy (closed list):**
+
+A setup declares 1–3 specialties from a canonical list. This drives gallery filtering and helps discovery.
+
+```yaml
+# data/specialties.yml (in the registry repo — authoritative source)
+backend:          "Backend engineer"
+frontend:         "Frontend engineer"
+fullstack:        "Full-stack engineer"
+mobile:           "Mobile (iOS / Android / RN)"
+devops:           "DevOps / SRE / Platform"
+data-engineer:    "Data engineering"
+data-science:     "Data science / ML"
+bi-analytics:     "BI / Analytics"
+security:         "Security engineer"
+qa-testing:       "QA / Testing / SDET"
+ux-design:        "UX / UI design"
+product:          "Product management"
+technical-writing: "Technical writing / docs"
+game-dev:         "Game development"
+embedded:         "Embedded / firmware"
+research:         "Research / academia"
+other:            "Other (custom)"
+```
+
+New entries may be added via PR to the registry. The CLI bundles this list at build time; if a user picks an unknown key, the descriptor is rejected client-side and server-side.
+
 **Validation rules** (enforced by ingest Action):
 
 - `schemaVersion` matches supported major version (1.x for v1)
 - `id.author` matches the GitHub handle of the issue author
 - `id.slug` matches `^[a-z0-9][a-z0-9-]{2,49}$`
 - `version` is next integer after the previous version for this `id` (or `1` for first publish)
+- `specialties` is a non-empty array, 1–3 entries, all keys from `data/specialties.yml`
 - `bundle.files[].path` has no `..`, no absolute paths, and starts with one of the allowed prefixes (`hooks/`, `skills/`, `commands/`, `agents/`) or is a root `*.md`
 - `bundle.files[].sha256` matches the actual tarball content
 - No `settings.json`, `settings.*`, `.claude.json` anywhere in `bundle.files`
@@ -301,8 +330,8 @@ Static site rendered at `https://claude-setups.dev`, served from the registry re
 
 **Pages:**
 
-- `/` — list of all setups, newest first; tag filter sidebar; text search over title/description
-- `/s/<author>/<slug>` — detail page: rendered descriptor + bundle file tree + one-line mirror command + "Report" button + history link
+- `/` — list of all setups, newest first; **specialty filter (primary)** + tag filter (secondary) + text search over title/description
+- `/s/<author>/<slug>` — detail page: rendered descriptor + specialty badges + bundle file tree + one-line mirror command + "Report" button + history link
 - `/s/<author>/<slug>/history` — prior versions
 - `/<author>` — all setups by a given author
 

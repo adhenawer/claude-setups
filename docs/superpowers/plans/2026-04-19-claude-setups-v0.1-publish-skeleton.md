@@ -2164,6 +2164,707 @@ After first push, open `https://adhenawer.github.io/claude-setups-registry/` in 
 
 ---
 
+---
+
+## Addendum A — Specialty taxonomy + gallery filter
+
+> **Execution order:** run Tasks A1–A3 BEFORE Task 17 (release). They integrate the specialty field into the existing publish/ingest/gallery flow.
+
+### Task A1: Specialties taxonomy module + canonical list
+
+**Files:**
+- Create: `/Users/adhenawer/Code/claude-setups-registry/data/specialties.yml` — authoritative list
+- Create: `/Users/adhenawer/Code/claude-setups/src/specialties.mjs` — CLI-side loader
+- Create: `/Users/adhenawer/Code/claude-setups/src/specialties.yml` — bundled copy (synced from registry)
+- Create: `/Users/adhenawer/Code/claude-setups/tests/specialties.test.mjs`
+
+- [ ] **Step 1: Write the registry-side canonical list**
+
+Write `/Users/adhenawer/Code/claude-setups-registry/data/specialties.yml`:
+```yaml
+# Authoritative specialty taxonomy for claude-setups.
+# Add entries via PR. Keys are slug-style (lowercase, hyphen-separated).
+backend:           "Backend engineer"
+frontend:          "Frontend engineer"
+fullstack:         "Full-stack engineer"
+mobile:            "Mobile (iOS / Android / React Native)"
+devops:            "DevOps / SRE / Platform"
+data-engineer:     "Data engineering"
+data-science:      "Data science / ML engineer"
+bi-analytics:      "BI / Analytics"
+security:          "Security engineer"
+qa-testing:        "QA / Testing / SDET"
+ux-design:         "UX / UI design"
+product:           "Product management"
+technical-writing: "Technical writing / docs"
+game-dev:          "Game development"
+embedded:          "Embedded / firmware"
+research:          "Research / academia"
+other:             "Other (custom)"
+```
+
+- [ ] **Step 2: Create a synced copy for the CLI bundle**
+
+Copy the file:
+```bash
+cp /Users/adhenawer/Code/claude-setups-registry/data/specialties.yml \
+   /Users/adhenawer/Code/claude-setups/src/specialties.yml
+```
+
+(This copy ships with the npm package so the CLI can validate specialties offline.)
+
+- [ ] **Step 3: Write failing tests**
+
+Create `/Users/adhenawer/Code/claude-setups/tests/specialties.test.mjs`:
+```js
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+
+describe('loadSpecialties', () => {
+  it('returns the canonical map with at least 15 entries', async () => {
+    const { loadSpecialties } = await import('../src/specialties.mjs');
+    const map = await loadSpecialties();
+    assert.ok(Object.keys(map).length >= 15);
+    assert.equal(map.backend, 'Backend engineer');
+    assert.equal(map['data-engineer'], 'Data engineering');
+  });
+});
+
+describe('validateSpecialties', () => {
+  it('accepts 1–3 known keys', async () => {
+    const { validateSpecialties } = await import('../src/specialties.mjs');
+    assert.doesNotThrow(() => validateSpecialties(['backend']));
+    assert.doesNotThrow(() => validateSpecialties(['backend', 'devops']));
+    assert.doesNotThrow(() => validateSpecialties(['backend', 'devops', 'data-engineer']));
+  });
+
+  it('rejects empty array', async () => {
+    const { validateSpecialties } = await import('../src/specialties.mjs');
+    assert.throws(() => validateSpecialties([]), /at least one/i);
+  });
+
+  it('rejects more than 3 entries', async () => {
+    const { validateSpecialties } = await import('../src/specialties.mjs');
+    assert.throws(
+      () => validateSpecialties(['backend', 'devops', 'data-engineer', 'frontend']),
+      /at most 3/i
+    );
+  });
+
+  it('rejects unknown key', async () => {
+    const { validateSpecialties } = await import('../src/specialties.mjs');
+    assert.throws(() => validateSpecialties(['ninja-rockstar']), /unknown specialty/i);
+  });
+
+  it('rejects duplicates', async () => {
+    const { validateSpecialties } = await import('../src/specialties.mjs');
+    assert.throws(() => validateSpecialties(['backend', 'backend']), /duplicate/i);
+  });
+});
+```
+
+- [ ] **Step 4: Run to verify failure**
+
+Run: `cd /Users/adhenawer/Code/claude-setups && npm test 2>&1 | tail -8`
+Expected: 6 failures.
+
+- [ ] **Step 5: Implement**
+
+Create `/Users/adhenawer/Code/claude-setups/src/specialties.mjs`:
+```js
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const YAML_PATH = join(__dirname, 'specialties.yml');
+
+let cached = null;
+
+function parseSimpleYamlMap(text) {
+  // Minimal parser for `key: "value"` or `key: value` lines.
+  // Skips comments and blank lines. Does not support nested structures.
+  const map = {};
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const m = line.match(/^([a-z0-9][a-z0-9-]*)\s*:\s*(?:"(.*)"|'(.*)'|(.+))\s*$/i);
+    if (m) {
+      const key = m[1];
+      const value = m[2] !== undefined ? m[2] : (m[3] !== undefined ? m[3] : m[4]);
+      map[key] = value;
+    }
+  }
+  return map;
+}
+
+export async function loadSpecialties() {
+  if (cached) return cached;
+  const text = await readFile(YAML_PATH, 'utf-8');
+  cached = parseSimpleYamlMap(text);
+  return cached;
+}
+
+export async function validateSpecialties(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) {
+    throw new Error('specialties: at least one value required');
+  }
+  if (arr.length > 3) {
+    throw new Error('specialties: at most 3 values allowed');
+  }
+  const seen = new Set();
+  for (const key of arr) {
+    if (seen.has(key)) throw new Error(`specialties: duplicate "${key}"`);
+    seen.add(key);
+  }
+  const known = await loadSpecialties();
+  for (const key of arr) {
+    if (!(key in known)) {
+      throw new Error(`specialties: unknown specialty "${key}". Valid keys: ${Object.keys(known).join(', ')}`);
+    }
+  }
+  return true;
+}
+```
+
+- [ ] **Step 6: Update package.json files list to include the YAML**
+
+In `/Users/adhenawer/Code/claude-setups/package.json`, update `"files"`:
+```json
+"files": ["src/", "README.md", "LICENSE"],
+```
+(`src/` already includes `specialties.yml`.) Verify with `npm pack --dry-run | grep specialties`:
+```bash
+cd /Users/adhenawer/Code/claude-setups && npm pack --dry-run 2>&1 | grep -i special
+```
+Expected: the YAML appears in the packed file list.
+
+- [ ] **Step 7: Run to verify pass**
+
+Run: `npm test 2>&1 | tail -5`
+Expected: 6 new passing.
+
+- [ ] **Step 8: Commit**
+
+```bash
+cd /Users/adhenawer/Code/claude-setups-registry
+git add data/specialties.yml
+git commit -m "feat: canonical specialty taxonomy (17 entries)"
+
+cd /Users/adhenawer/Code/claude-setups
+git add src/specialties.mjs src/specialties.yml tests/specialties.test.mjs package.json
+git commit -m "feat: specialty taxonomy loader + validator; 6 tests"
+```
+
+### Task A2: Descriptor + CLI + Issue Form integration
+
+**Files:**
+- Modify: `/Users/adhenawer/Code/claude-setups/src/descriptor.mjs`
+- Modify: `/Users/adhenawer/Code/claude-setups/src/publish.mjs` (pass specialties through)
+- Modify: `/Users/adhenawer/Code/claude-setups/src/cli.mjs` (accept `--specialties` flag)
+- Modify: `/Users/adhenawer/Code/claude-setups-registry/.github/ISSUE_TEMPLATE/setup-submission.yml` (add dropdown)
+- Modify: `/Users/adhenawer/Code/claude-setups/tests/descriptor.test.mjs`
+- Modify: `/Users/adhenawer/Code/claude-setups/tests/publish.test.mjs`
+
+- [ ] **Step 1: Write failing descriptor tests for specialties**
+
+Append to `/Users/adhenawer/Code/claude-setups/tests/descriptor.test.mjs`:
+```js
+describe('buildDescriptor with specialties', () => {
+  it('includes specialties array in descriptor', async () => {
+    const { buildDescriptor } = await import('../src/descriptor.mjs');
+    const d = await buildDescriptor({
+      author: 'a', slug: 'ok', title: 't', description: 'd', tags: ['x'],
+      plugins: [], marketplaces: [], mcpServers: [],
+      specialties: ['backend', 'devops'],
+    });
+    assert.deepEqual(d.specialties, ['backend', 'devops']);
+  });
+
+  it('rejects missing specialties (required)', async () => {
+    const { buildDescriptor } = await import('../src/descriptor.mjs');
+    await assert.rejects(async () => await buildDescriptor({
+      author: 'a', slug: 'ok', title: 't', description: 'd', tags: ['x'],
+      plugins: [], marketplaces: [], mcpServers: [],
+    }), /specialties/i);
+  });
+
+  it('rejects unknown specialty', async () => {
+    const { buildDescriptor } = await import('../src/descriptor.mjs');
+    await assert.rejects(async () => await buildDescriptor({
+      author: 'a', slug: 'ok', title: 't', description: 'd', tags: ['x'],
+      plugins: [], marketplaces: [], mcpServers: [],
+      specialties: ['rockstar-ninja'],
+    }), /unknown specialty/i);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `npm test 2>&1 | tail -8`
+Expected: 3 failures.
+
+- [ ] **Step 3: Update buildDescriptor to accept + validate specialties**
+
+Edit `/Users/adhenawer/Code/claude-setups/src/descriptor.mjs` — change `buildDescriptor` to be async and integrate specialties:
+```js
+import { validateSpecialties } from './specialties.mjs';
+
+// ... existing constants ...
+
+export async function buildDescriptor(input) {
+  const {
+    author, slug, title, description, tags,
+    plugins, marketplaces, mcpServers, specialties, version = 1,
+  } = input;
+
+  if (!author) throw new Error('author is required');
+  if (!SLUG_RE.test(slug)) {
+    throw new Error(`invalid slug: must match ${SLUG_RE} (got "${slug}")`);
+  }
+  if (!title || title.length === 0 || title.length > MAX_TITLE) {
+    throw new Error(`invalid title: must be 1-${MAX_TITLE} chars`);
+  }
+  if (!description || description.length === 0 || description.length > MAX_DESCRIPTION) {
+    throw new Error(`invalid description: must be 1-${MAX_DESCRIPTION} chars`);
+  }
+  if (!Array.isArray(tags) || tags.length === 0 || tags.length > MAX_TAGS) {
+    throw new Error(`invalid tags: must be 1-${MAX_TAGS} entries`);
+  }
+  if (!specialties) throw new Error('specialties is required');
+  await validateSpecialties(specialties);
+
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    id: { author, slug },
+    version,
+    title, description, tags,
+    author: {
+      handle: author,
+      url: `https://github.com/${author}`,
+    },
+    createdAt: new Date().toISOString(),
+    license: 'MIT',
+    plugins, marketplaces, mcpServers,
+    specialties,
+    bundle: { present: false },
+  };
+}
+```
+
+(`buildDescriptor` becomes `async` because `validateSpecialties` is async. Update any call site accordingly — `src/publish.mjs` needs `await`.)
+
+Also update `validateDescriptor` (the sync validator) to check specialties shape:
+```js
+export function validateDescriptor(d) {
+  if (!d || !d.schemaVersion) {
+    throw new Error('Invalid descriptor: missing schemaVersion');
+  }
+  const major = parseInt(d.schemaVersion.split('.')[0], 10);
+  if (major !== SUPPORTED_MAJOR) {
+    throw new Error(
+      `Unsupported schemaVersion ${d.schemaVersion}: this claude-setups supports major ${SUPPORTED_MAJOR}`
+    );
+  }
+  if (!d.id?.author || !d.id?.slug) throw new Error('missing id.author or id.slug');
+  if (!d.title || !d.description || !Array.isArray(d.tags)) {
+    throw new Error('missing metadata');
+  }
+  if (!Array.isArray(d.specialties) || d.specialties.length === 0 || d.specialties.length > 3) {
+    throw new Error('specialties must be an array of 1-3 entries');
+  }
+  return true;
+}
+```
+
+- [ ] **Step 4: Update publish.mjs to await buildDescriptor + forward specialties**
+
+Edit `/Users/adhenawer/Code/claude-setups/src/publish.mjs`:
+Change `const descriptor = buildDescriptor({ ... })` to `const descriptor = await buildDescriptor({ ... specialties })`. Full modification:
+```js
+export async function publishViaGh(opts) {
+  const {
+    claudeHome, author, slug, title, description, tags, specialties,
+    registryRepo,
+    gh = runGh,
+  } = opts;
+
+  const collected = await collect(claudeHome);
+  const descriptor = await buildDescriptor({
+    author, slug, title, description, tags, specialties,
+    plugins: collected.plugins,
+    marketplaces: collected.marketplaces,
+    mcpServers: collected.mcpServers,
+  });
+  // ... rest unchanged
+}
+```
+
+- [ ] **Step 5: Update CLI to parse --specialties flag**
+
+Edit `/Users/adhenawer/Code/claude-setups/src/cli.mjs`, modify `cmdPublish`:
+```js
+async function cmdPublish(parsed) {
+  const { title, description, tags, author, slug,
+    'registry-repo': registryRepo, specialties } = parsed.flags;
+  if (!title || !description || !tags || !author || !slug || !specialties) {
+    console.error('Error: publish requires --title, --description, --tags, --author, --slug, --specialties');
+    console.error('Example: claude-setups publish --author alice --slug my-setup \\');
+    console.error('           --title "My setup" --description "desc" \\');
+    console.error('           --tags py,backend --specialties backend,devops');
+    process.exit(1);
+  }
+  const { publishViaGh } = await import('./publish.mjs');
+  const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+  const registry = registryRepo || 'adhenawer/claude-setups-registry';
+
+  const result = await publishViaGh({
+    claudeHome, author, slug, title, description,
+    tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+    specialties: specialties.split(',').map(s => s.trim()).filter(Boolean),
+    registryRepo: registry,
+  });
+
+  console.log(JSON.stringify({
+    status: 'ok',
+    issueUrl: result.issueUrl,
+    slug, author,
+  }));
+}
+```
+
+- [ ] **Step 6: Update Issue Form with specialty dropdown**
+
+Edit `/Users/adhenawer/Code/claude-setups-registry/.github/ISSUE_TEMPLATE/setup-submission.yml` — add a dropdown field:
+```yaml
+  - type: dropdown
+    id: specialties
+    attributes:
+      label: Specialties (pick 1–3)
+      description: Primary focus area of this setup. Used for gallery filtering.
+      multiple: true
+      options:
+        - backend
+        - frontend
+        - fullstack
+        - mobile
+        - devops
+        - data-engineer
+        - data-science
+        - bi-analytics
+        - security
+        - qa-testing
+        - ux-design
+        - product
+        - technical-writing
+        - game-dev
+        - embedded
+        - research
+        - other
+    validations:
+      required: true
+```
+
+(Place this block after the existing `descriptor` textarea in the form body array.)
+
+- [ ] **Step 7: Update existing descriptor tests that now need async + specialties**
+
+In `/Users/adhenawer/Code/claude-setups/tests/descriptor.test.mjs`, update existing `buildDescriptor` tests to:
+- Use `await buildDescriptor(...)`
+- Include `specialties: ['backend']` in the input
+
+Example patch to the first existing test:
+```js
+  it('assembles a descriptor with required fields', async () => {
+    const { buildDescriptor } = await import('../src/descriptor.mjs');
+    const d = await buildDescriptor({
+      author: 'alice', slug: 'my-setup',
+      title: 'My Python setup', description: 'A daily driver',
+      tags: ['python'], specialties: ['backend'],
+      plugins: [...], marketplaces: [...], mcpServers: [...],
+    });
+    // ... existing assertions still valid
+  });
+```
+Repeat for the other `buildDescriptor` tests in that describe block (add `specialties: ['backend']` + `await`).
+
+Also update `/Users/adhenawer/Code/claude-setups/tests/publish.test.mjs` — every `publishViaGh` call gets `specialties: ['backend']` in the opts.
+
+- [ ] **Step 8: Run to verify pass**
+
+Run: `npm test 2>&1 | tail -5`
+Expected: all previous + 3 new passing.
+
+- [ ] **Step 9: Commit**
+
+```bash
+cd /Users/adhenawer/Code/claude-setups
+git add src/descriptor.mjs src/publish.mjs src/cli.mjs tests/descriptor.test.mjs tests/publish.test.mjs
+git commit -m "feat: specialty field in descriptor/publish/CLI; async buildDescriptor"
+
+cd /Users/adhenawer/Code/claude-setups-registry
+git add .github/ISSUE_TEMPLATE/setup-submission.yml
+git commit -m "feat: specialty dropdown in Issue Form"
+```
+
+### Task A3: Registry validator + gallery filter
+
+**Files:**
+- Modify: `/Users/adhenawer/Code/claude-setups-registry/scripts/validate-descriptor.mjs`
+- Modify: `/Users/adhenawer/Code/claude-setups-registry/scripts/tests/validate.test.mjs`
+- Modify: `/Users/adhenawer/Code/claude-setups-registry/site/index.html`
+- Modify: `/Users/adhenawer/Code/claude-setups-registry/site/setup.html`
+- Modify: `/Users/adhenawer/Code/claude-setups-registry/site/build.mjs`
+- Modify: `/Users/adhenawer/Code/claude-setups-registry/site/styles.css`
+
+- [ ] **Step 1: Write failing validator tests for specialties**
+
+Append to `/Users/adhenawer/Code/claude-setups-registry/scripts/tests/validate.test.mjs`:
+```js
+describe('validateDescriptor — specialties', () => {
+  const VALID = {
+    schemaVersion: '1.0.0',
+    id: { author: 'a', slug: 'ok' },
+    version: 1, title: 'T', description: 'D', tags: ['x'],
+    author: { handle: 'a', url: 'https://github.com/a' },
+    createdAt: '2026-04-19T00:00:00Z', license: 'MIT',
+    plugins: [], marketplaces: [], mcpServers: [],
+    bundle: { present: false },
+  };
+
+  it('accepts 1-3 specialties from the known list', async () => {
+    const { validate } = await import('../validate-descriptor.mjs');
+    assert.doesNotThrow(() => validate({ ...VALID, specialties: ['backend'] }));
+    assert.doesNotThrow(() => validate({ ...VALID, specialties: ['backend', 'devops', 'data-engineer'] }));
+  });
+
+  it('rejects missing specialties', async () => {
+    const { validate } = await import('../validate-descriptor.mjs');
+    assert.throws(() => validate(VALID), /specialties/);
+  });
+
+  it('rejects more than 3', async () => {
+    const { validate } = await import('../validate-descriptor.mjs');
+    assert.throws(() => validate({ ...VALID, specialties: ['a','b','c','d'] }), /at most 3|too many/i);
+  });
+
+  it('rejects unknown key', async () => {
+    const { validate } = await import('../validate-descriptor.mjs');
+    assert.throws(() => validate({ ...VALID, specialties: ['ninja-rockstar'] }), /unknown/i);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `cd /Users/adhenawer/Code/claude-setups-registry && npm test 2>&1 | tail -5`
+Expected: 4 failures.
+
+- [ ] **Step 3: Load specialties + integrate in validate**
+
+Edit `/Users/adhenawer/Code/claude-setups-registry/scripts/validate-descriptor.mjs` to load specialties.yml and check:
+```js
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SPECIALTIES_PATH = join(__dirname, '../data/specialties.yml');
+
+let _specialties = null;
+async function getSpecialties() {
+  if (_specialties) return _specialties;
+  const text = await readFile(SPECIALTIES_PATH, 'utf-8');
+  const map = {};
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const m = t.match(/^([a-z0-9][a-z0-9-]*)\s*:\s*(?:"(.*)"|(.+))\s*$/i);
+    if (m) map[m[1]] = m[2] !== undefined ? m[2] : m[3];
+  }
+  _specialties = map;
+  return map;
+}
+
+// ... existing constants ...
+
+export async function validate(d, opts = {}) {
+  // ... existing validations ...
+
+  // Specialties
+  if (!Array.isArray(d.specialties) || d.specialties.length === 0) {
+    throw new Error('specialties: at least one required');
+  }
+  if (d.specialties.length > 3) {
+    throw new Error('specialties: at most 3 allowed');
+  }
+  const known = await getSpecialties();
+  for (const s of d.specialties) {
+    if (!(s in known)) throw new Error(`specialties: unknown "${s}"`);
+  }
+  // ... rest
+}
+```
+
+Note `validate` is now async — update any call sites (`scripts/ingest.mjs` already uses `validate(...)`; add `await`).
+
+- [ ] **Step 4: Update ingest.mjs to await validate**
+
+Edit `/Users/adhenawer/Code/claude-setups-registry/scripts/ingest.mjs` — change `validate(descriptor, { issueAuthor })` to `await validate(descriptor, { issueAuthor })`.
+
+- [ ] **Step 5: Update test files to match async validate**
+
+In existing `scripts/tests/validate.test.mjs`, wrap calls in `assert.doesNotThrow` with `async () =>` arrows where needed, OR switch to `assert.rejects` / `await validate(...)`. Example:
+```js
+  it('accepts a well-formed descriptor', async () => {
+    const { validate } = await import('../validate-descriptor.mjs');
+    await validate(VALID);  // async — throws if invalid
+  });
+
+  it('rejects missing schemaVersion', async () => {
+    const { validate } = await import('../validate-descriptor.mjs');
+    const bad = { ...VALID }; delete bad.schemaVersion;
+    await assert.rejects(async () => await validate(bad), /schemaVersion/i);
+  });
+```
+Apply the same pattern to the new specialty tests (added in Step 1).
+
+- [ ] **Step 6: Run to verify pass**
+
+Run: `cd /Users/adhenawer/Code/claude-setups-registry && npm test 2>&1 | tail -5`
+Expected: 4 new passing.
+
+- [ ] **Step 7: Add specialty filter to the gallery**
+
+Edit `/Users/adhenawer/Code/claude-setups-registry/site/index.html` to add a filter strip above the setups list:
+```html
+<body>
+  <header>
+    <h1>claude-setups</h1>
+    <p>Community Claude Code setups. Publish with <code>npx -y claude-setups publish</code>.</p>
+  </header>
+  <nav id="filters">
+    <label>Specialty:</label>
+    <select id="specialty-filter" aria-label="Filter by specialty">
+      <option value="">all</option>
+      <!-- Populated at build time -->
+    </select>
+  </nav>
+  <main id="setups-list">
+    <!-- Populated at build time -->
+  </main>
+  <script>
+    document.getElementById('specialty-filter').addEventListener('change', (e) => {
+      const val = e.target.value;
+      const cards = document.querySelectorAll('[data-specialties]');
+      for (const card of cards) {
+        const specs = (card.dataset.specialties || '').split(',');
+        card.style.display = (!val || specs.includes(val)) ? '' : 'none';
+      }
+    });
+  </script>
+</body>
+```
+
+- [ ] **Step 8: Update build.mjs to emit specialty filter options + data attributes on cards**
+
+Edit `/Users/adhenawer/Code/claude-setups-registry/site/build.mjs` — extend `renderCard`:
+```js
+function renderCard(d) {
+  const tags = d.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+  const specs = (d.specialties || []).join(',');
+  const specsHtml = (d.specialties || []).map(s => `<span class="specialty">${escapeHtml(s)}</span>`).join('');
+  const href = `s/${d.id.author}/${d.id.slug}.html`;
+  return `
+    <article class="setup-card" data-specialties="${escapeHtml(specs)}">
+      <h2><a href="${href}">${escapeHtml(d.title)}</a></h2>
+      <p class="author">by <a href="${escapeHtml(d.author.url)}">${escapeHtml(d.id.author)}</a> · ${d.createdAt.slice(0, 10)}</p>
+      <p>${escapeHtml(d.description)}</p>
+      <div class="specialties">${specsHtml}</div>
+      <div class="tags">${tags}</div>
+    </article>
+  `;
+}
+```
+
+In `build()`, populate the filter dropdown with specialty options from the union seen across all setups:
+```js
+async function build() {
+  await mkdir(OUT_DIR, { recursive: true });
+  await copyFile(join(SITE_DIR, 'styles.css'), join(OUT_DIR, 'styles.css'));
+
+  const setups = await listSetups();
+
+  // Collect unique specialties across all setups (sorted)
+  const uniqueSpecs = [...new Set(setups.flatMap(s => s.descriptor.specialties || []))].sort();
+  const options = uniqueSpecs.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+
+  const indexTpl = await readFile(join(SITE_DIR, 'index.html'), 'utf-8');
+  let index = indexTpl
+    .replace('<!-- Populated at build time -->', setups.map(s => renderCard(s.descriptor)).join(''))
+    .replace('<option value="">all</option>\n      <!-- Populated at build time -->',
+             '<option value="">all</option>\n      ' + options);
+  await writeFile(join(OUT_DIR, 'index.html'), index);
+
+  // ... existing detail-page loop unchanged
+}
+```
+
+- [ ] **Step 9: Add specialty badge render to setup.html + build.mjs**
+
+Edit `/Users/adhenawer/Code/claude-setups-registry/site/setup.html` — add below the `<p class="author">` line:
+```html
+    <div class="specialties">%%SPECIALTIES_HTML%%</div>
+```
+
+Edit `build.mjs` `renderDetail` to compute `specialtiesHtml`:
+```js
+  const specialtiesHtml = (d.specialties || []).map(s => `<span class="specialty">${escapeHtml(s)}</span>`).join('');
+  return template
+    .replace(/%%TITLE%%/g, escapeHtml(d.title))
+    // ... existing replacements ...
+    .replace(/%%SPECIALTIES_HTML%%/g, specialtiesHtml)
+    .replace(/%%DESCRIPTOR_JSON%%/g, escapeHtml(JSON.stringify(d, null, 2)));
+```
+
+- [ ] **Step 10: Add CSS for specialty badges**
+
+Append to `/Users/adhenawer/Code/claude-setups-registry/site/styles.css`:
+```css
+.specialty { display: inline-block; background: #e6f4ea; color: #1e6b2f; padding: 0.1em 0.5em; border-radius: 3px; font-size: 0.85em; margin-right: 0.25em; font-weight: 500; }
+.specialties { margin: 0.5em 0; }
+#filters { background: #f6f8fa; padding: 0.5em 1em; border-radius: 6px; margin-bottom: 1em; }
+#filters label { margin-right: 0.5em; font-weight: 600; }
+#filters select { padding: 0.25em 0.5em; }
+```
+
+- [ ] **Step 11: Smoke-build**
+
+```bash
+cd /Users/adhenawer/Code/claude-setups-registry
+mkdir -p data/setups/smoke
+cat > data/setups/smoke/demo.json <<'EOF'
+{"schemaVersion":"1.0.0","id":{"author":"smoke","slug":"demo"},"version":1,"title":"T","description":"D","tags":["t"],"author":{"handle":"smoke","url":"https://github.com/smoke"},"createdAt":"2026-04-19T00:00:00Z","license":"MIT","plugins":[],"marketplaces":[],"mcpServers":[],"specialties":["backend","devops"],"bundle":{"present":false}}
+EOF
+node site/build.mjs
+grep -c 'data-specialties="backend,devops"' site-build/index.html
+grep -c 'specialty-filter' site-build/index.html
+rm -rf data/setups/smoke site-build
+```
+Expected: both ≥ 1.
+
+- [ ] **Step 12: Commit**
+
+```bash
+cd /Users/adhenawer/Code/claude-setups-registry
+git add scripts/validate-descriptor.mjs scripts/ingest.mjs scripts/tests/validate.test.mjs \
+        site/index.html site/setup.html site/build.mjs site/styles.css
+git commit -m "feat: specialty filter in gallery + async validator with specialty check; 4 new tests"
+```
+
+---
+
 ## Self-review (already applied)
 
 **Spec coverage:**
