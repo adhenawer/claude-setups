@@ -1,18 +1,18 @@
-# claude-share
+# claude-setups
 
-**Share your Claude Code setup — safely.** Publish a descriptor of your plugins, MCP servers, and marketplaces to a community gallery; install someone else's setup with a single command.
+**Discover and share Claude Code setups — safely.** Publish a descriptor of your plugins, MCP servers, and marketplaces to the community gallery; mirror someone else's setup with a single command. No config values, no file contents, no secrets ever leave your machine.
 
 > **Status:** 🚧 Very early. Research + design phase. See [docs/DESIGN.md](docs/DESIGN.md), [docs/SECURITY_PREMISE.md](docs/SECURITY_PREMISE.md), [docs/RISK_ANALYSIS.md](docs/RISK_ANALYSIS.md), and [docs/PRIOR_ART.md](docs/PRIOR_ART.md).
 
 ## Premise
 
-Unlike a full backup/restore tool (see sibling project [claude-snapshot](https://github.com/adhenawer/claude-snapshot)), **claude-share never reads any of your configuration files**. It publishes only the *identifiers* of the public things you have configured — plugin names, marketplace sources, MCP server commands (without `env`).
+Unlike a full backup/restore tool (see sibling project [claude-snapshot](https://github.com/adhenawer/claude-snapshot)), **claude-setups never reads any of your configuration files**. It publishes only the *identifiers* of the public things you have configured — plugin names, marketplace sources, MCP server commands (without `env`).
 
 This is **secure by construction**: the code to read your secrets does not exist.
 
 ## Is this safe to run?
 
-Short answer: **yes, and you don't have to take our word for it**. Here's literally everything that leaves your machine when you run `claude-share publish`:
+Short answer: **yes, and you don't have to take our word for it**. Here's literally everything that leaves your machine when you run `claude-setups publish`:
 
 1. **Plugin identifiers** — e.g. `superpowers@claude-plugins-official` (version `5.0.7`). Public info. Anyone can install the same plugins themselves.
 2. **Marketplace sources** — e.g. `github.com/anthropics/claude-plugins-official`. Public GitHub URLs.
@@ -39,7 +39,7 @@ This is **security by construction, not by redaction**. Regex-based secret scann
 One command; the sender's env values never existed in the payload to begin with:
 
 ```bash
-npx -y claude-share mirror https://claude-share.dev/s/abc123
+npx -y claude-setups mirror https://claude-setups.dev/s/abc123
 ```
 
 The tool:
@@ -61,7 +61,7 @@ The tool:
 Primary path (recommended) — with the [GitHub CLI](https://cli.github.com):
 
 ```bash
-npx -y claude-share publish
+npx -y claude-setups publish
 ```
 
 The tool reads `~/.claude/` (identifiers only), asks for title/description/tags, shows the full descriptor JSON on one screen, and on your confirmation creates a GitHub issue on the registry repo. A Github Action validates the schema and commits the descriptor into the public gallery.
@@ -76,7 +76,7 @@ Totally valid — and here's the clean path:
 
 1. Package your custom hook or CLAUDE.md template as a standalone Claude Code plugin (its own repo with a `.claude-plugin/plugin.json`).
 2. Publish it to any marketplace (your own GitHub repo is enough).
-3. Reference that plugin in your claude-share descriptor.
+3. Reference that plugin in your claude-setups descriptor.
 
 Now it's shareable **and** reusable **and** versioned. Other users mirror your setup and get your hook as an installable plugin, not a raw script they had to trust.
 
@@ -84,7 +84,7 @@ The constraint that "shared setups are composed of public building blocks" pushe
 
 ## Relation to claude-snapshot
 
-| | [claude-snapshot](https://github.com/adhenawer/claude-snapshot) | claude-share |
+| | [claude-snapshot](https://github.com/adhenawer/claude-snapshot) | claude-setups |
 |---|---|---|
 | Unit of transfer | `.tar.gz` with full file contents (including `settings.json`, MCP env, hooks, CLAUDE.md) | JSON descriptor (identifiers only) |
 | Destination | private (your own machines) | public (community gallery) |
@@ -93,7 +93,7 @@ The constraint that "shared setups are composed of public building blocks" pushe
 | Privacy model | local-only (no network) | secure-by-construction |
 | Primary use case | backup, restore, multi-machine sync | discovery, showcase, one-command mirror |
 
-Both tools can coexist. claude-snapshot is the personal "save state" for your own machines; claude-share is the "post to community" surface.
+Both tools can coexist. claude-snapshot is the personal "save state" for your own machines; claude-setups is the "post to community" surface.
 
 ## Status
 

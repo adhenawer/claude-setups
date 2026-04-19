@@ -1,6 +1,6 @@
 # Security Premise
 
-The principles that constrain every design decision in claude-share. Each principle is enforced by architecture, not by policy — so a compliant implementation is incapable of violating them.
+The principles that constrain every design decision in claude-setups. Each principle is enforced by architecture, not by policy — so a compliant implementation is incapable of violating them.
 
 ## [P1] Never transmit values or file contents
 
@@ -26,7 +26,7 @@ Regex-based secret scanning catches ~90% of known patterns and misses the long t
 
 The descriptor references only things that are already publicly installable: plugins from public marketplaces, MCPs from public package registries, marketplaces hosted on public GitHub repos.
 
-Custom private hooks or a personal `CLAUDE.md` are NOT shareable via claude-share. The clean path for users who want to share customizations is to package them as a plugin (public, installable, versioned) and reference that plugin in the descriptor.
+Custom private hooks or a personal `CLAUDE.md` are NOT shareable via claude-setups. The clean path for users who want to share customizations is to package them as a plugin (public, installable, versioned) and reference that plugin in the descriptor.
 
 This constraint is intentional:
 

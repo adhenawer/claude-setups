@@ -1,6 +1,6 @@
 # Prior Art
 
-Compiled 2026-04-19. Prior projects, patterns, and communities relevant to claude-share's design.
+Compiled 2026-04-19. Prior projects, patterns, and communities relevant to claude-setups's design.
 
 ## Direct Claude Code sharing
 
@@ -82,14 +82,14 @@ GitHub's countermeasures:
 - Secret scanning partnerships with AWS/GCP/OpenAI for auto-revocation on detection
 - Copilot-powered unstructured-secret detection (passwords, not just API keys)
 
-**Implication for claude-share:** even GitHub's industrial-grade regex-plus-partnerships approach misses tens of millions of secrets per year. A small project cannot out-regex a 39M-per-year flood. **The architectural answer is to not transmit values in the first place** — descriptor-only.
+**Implication for claude-setups:** even GitHub's industrial-grade regex-plus-partnerships approach misses tens of millions of secrets per year. A small project cannot out-regex a 39M-per-year flood. **The architectural answer is to not transmit values in the first place** — descriptor-only.
 
 ### Secret-scanning tools (reference for a "second line of defense" if ever needed)
 
 - **[KeySentry](https://github.com/AdityaBhatt3010/KeySentry)** — scans GitHub repos for leaked API keys.
 - **[KeyLeak Detector](https://github.com/Amal-David/keyleak-detector)** — scans websites for exposed keys and secrets.
 
-These would only be relevant if claude-share ever accepted file content — v1 explicitly does not.
+These would only be relevant if claude-setups ever accepted file content — v1 explicitly does not.
 
 ## Competitive gap
 

@@ -4,17 +4,17 @@
 
 ## Product shape
 
-**claude-share** is a two-part product:
+**claude-setups** is a two-part product:
 
 1. **CLI tool + Claude Code plugin** (npm package, distributable via `npx`, also installable as a Claude Code plugin) with commands `publish`, `mirror`, `browse`, `revoke`. Same underlying logic in both surfaces.
 2. **Community gallery** — 100% GitHub-hosted: Issues for submission, a JSON tree in the repo for storage, GitHub Pages for rendering, GitHub Actions for validation + moderation glue. No other backend, no serverless, no external services.
 
 ## Architecture (locked)
 
-**GitHub is the only dependency.** No server, no database, no edge worker, no third-party service. Everything lives in a single public GitHub repo (`adhenawer/claude-share-registry` or similar):
+**GitHub is the only dependency.** No server, no database, no edge worker, no third-party service. Everything lives in a single public GitHub repo (`adhenawer/claude-setups-registry` or similar):
 
 ```
-claude-share-registry/
+claude-setups-registry/
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
 │   │   └── setup-submission.yml      # structured form fallback for no-gh users
@@ -34,7 +34,7 @@ claude-share-registry/
 Data flow:
 
 ```
-npx claude-share publish
+npx claude-setups publish
   └─→ (primary) gh CLI → creates issue with descriptor body
   └─→ (fallback) opens browser to prefilled Issue Form URL; user submits manually
 
@@ -96,16 +96,16 @@ The unit of sharing. Stored as JSON, served at a stable URL.
 
 ```bash
 # Publish — detects gh CLI; uses it if present; falls back to browser otherwise
-npx -y claude-share publish
+npx -y claude-setups publish
 
 # Mirror — fetches descriptor, installs plugins + marketplaces + MCPs idempotently
-npx -y claude-share mirror https://claude-share.dev/s/abc123
+npx -y claude-setups mirror https://claude-setups.dev/s/abc123
 
 # Browse — opens gallery in default browser
-npx -y claude-share browse
+npx -y claude-setups browse
 
 # Revoke — closes/removes the user's own published setup by ID
-npx -y claude-share revoke abc123
+npx -y claude-setups revoke abc123
 ```
 
 All commands output pretty text on a TTY and JSON when piped (same pattern as claude-snapshot 0.3.0). Also installable as a Claude Code plugin with equivalent slash commands: `/share:publish`, `/share:mirror`, `/share:browse`, `/share:revoke`.
@@ -152,7 +152,7 @@ Both paths publish exactly the same artifact: a descriptor. No additional flags,
 ## Mirror flow
 
 ```
-1. User runs `claude-share mirror <url>`.
+1. User runs `claude-setups mirror <url>`.
 2. CLI fetches the descriptor JSON from <url>.
 3. CLI shows the install plan:
      "This setup installs N plugins, M MCP servers, from K marketplaces."
@@ -187,7 +187,7 @@ The descriptor can only reference things that are **already publicly installable
 
 This is what makes the mirror flow safe-by-construction. Nothing private about the publisher's machine is referenced; everything in the descriptor is something a third party could have installed on their own by reading the identifiers.
 
-**What about custom private hooks or a personal `CLAUDE.md`?** They don't travel in a descriptor. Users who want to share those customizations have a clean path: package them as a plugin (public, installable, versioned) and reference the plugin in the descriptor. The claude-share ecosystem nudges users toward that hygiene rather than transmitting arbitrary file contents.
+**What about custom private hooks or a personal `CLAUDE.md`?** They don't travel in a descriptor. Users who want to share those customizations have a clean path: package them as a plugin (public, installable, versioned) and reference the plugin in the descriptor. The claude-setups ecosystem nudges users toward that hygiene rather than transmitting arbitrary file contents.
 
 **Why this constraint is not a limitation but a feature:**
 
@@ -240,7 +240,7 @@ Enforced by code structure (see [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for t
 - ✅ **Hosting:** GitHub-only. Issues for submission + Actions for validation + repo JSON tree for storage + Pages for gallery. No other backend.
 - ✅ **Publish UX:** `gh` CLI primary; browser Issue Form as fallback when the user declines to install `gh`.
 - ✅ **Artifact model:** descriptor-only. No tarballs, no binary attachments, no file contents transmitted. Shared setups are composed of public building blocks (plugins, marketplaces, MCPs).
-- ✅ **Mirror command:** `claude-share mirror <url>` — fetches descriptor, shows install plan with idempotent pre-checks, runs `claude marketplace add` + `claude plugin install` + `claude mcp add` sequentially.
+- ✅ **Mirror command:** `claude-setups mirror <url>` — fetches descriptor, shows install plan with idempotent pre-checks, runs `claude marketplace add` + `claude plugin install` + `claude mcp add` sequentially.
 - ✅ **Idempotency/atomicity:** each Claude Code install command is idempotent; mirror is sequential with pre-checks; partial failure is reported; re-running is safe.
 - ✅ **Authentication:** GitHub-only (via `gh auth` for CLI, via issue attribution for browser fallback). No separate account system.
 
@@ -250,7 +250,7 @@ Enforced by code structure (see [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for t
 2. **Tag taxonomy:** Free-form or from a moderated list?
 3. **Content moderation:** Email reports + `/report` issue comments. Any automated pre-publish scanning (flag `args` matching secret patterns)?
 4. **Versioning:** If a user republishes an updated setup, is it a new ID or a version of the old one?
-5. **Naming:** Keep `claude-share`? Or something more evocative? (`claudehub`, `showcc`, etc.)
+5. **Naming:** Keep `claude-setups`? Or something more evocative? (`claudehub`, `showcc`, etc.)
 6. **Relation to existing awesome lists:** Integrate (auto-submit to upstream) or compete?
 7. **Discovery API:** Stable `/s/<id>.json` for machine consumption — yes (cheap, just serve the file from Pages).
 8. **License on shared descriptors:** CC0, MIT, or something permissive-but-attribution?
@@ -275,7 +275,7 @@ Directly reusable:
 
 NOT reused (scope doesn't apply to descriptor-only):
 
-- Tarball build/extract pipeline — no tarballs in claude-share.
+- Tarball build/extract pipeline — no tarballs in claude-setups.
 - `applySnapshot`-like write-with-`.bak` logic — no file writing; mirror invokes `claude plugin install` etc. which manage their own state.
 - Path normalization across user homes — no paths in a descriptor.
 - `settings.json` / `.claude.json` read — the collector has no code path to read these files.
@@ -284,7 +284,7 @@ NOT reused (scope doesn't apply to descriptor-only):
 ## Next steps
 
 1. Resolve open questions #1, #2, #7 (hosting, auth, naming) in continued brainstorming.
-2. Once locked, write full design spec at `docs/superpowers/specs/<date>-claude-share-v1-design.md` following the same pattern as claude-snapshot's design flow.
+2. Once locked, write full design spec at `docs/superpowers/specs/<date>-claude-setups-v1-design.md` following the same pattern as claude-snapshot's design flow.
 3. Scaffold the CLI crate: copy `package.json` skeleton + `classifyMcpMethod` from claude-snapshot, build out `publish` / `install` / `browse` / `revoke`.
 4. Decide gallery stack + deploy a minimal read-only browse page.
 5. Public launch post-security-review by an outside reviewer.

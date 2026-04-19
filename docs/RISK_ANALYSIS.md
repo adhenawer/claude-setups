@@ -114,7 +114,7 @@ A small project cannot out-regex that flood. **For a community-wide share mechan
 
 ## Architectural conclusion — single descriptor-only path
 
-claude-share has exactly one transmission path. The descriptor collector has **no code path** that touches:
+claude-setups has exactly one transmission path. The descriptor collector has **no code path** that touches:
 
 - `env` sections of `settings.json` or `mcpServers.*`
 - `command` strings under `settings.hooks`
@@ -132,9 +132,9 @@ This is **security by construction**, not by policy. The collector cannot leak a
 
 ### What about personal customizations?
 
-A user with a custom hook script or a personal `CLAUDE.md` **cannot share them directly** through claude-share. That is intentional, not a gap.
+A user with a custom hook script or a personal `CLAUDE.md` **cannot share them directly** through claude-setups. That is intentional, not a gap.
 
-The clean path for sharing a customization is: package it as a Claude Code plugin (public, installable, versioned) and reference that plugin in your descriptor. The claude-share ecosystem nudges users toward this hygiene — it's better for everyone than broadcasting raw file contents.
+The clean path for sharing a customization is: package it as a Claude Code plugin (public, installable, versioned) and reference that plugin in your descriptor. The claude-setups ecosystem nudges users toward this hygiene — it's better for everyone than broadcasting raw file contents.
 
 ### Residual risk: the MCP `args` field
 
