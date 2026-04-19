@@ -6,35 +6,37 @@
 
 ## Premise
 
-Unlike a full backup/restore tool (see sibling project [claude-snapshot](https://github.com/adhenawer/claude-snapshot)), **claude-share never transmits configuration values**. It only shares the *names* of the things you have configured — plugin identifiers, MCP server commands (without `env`), marketplace sources, skill names.
+Unlike a full backup/restore tool (see sibling project [claude-snapshot](https://github.com/adhenawer/claude-snapshot)), **claude-share never reads any of your configuration files**. It publishes only the *identifiers* of the public things you have configured — plugin names, marketplace sources, MCP server commands (without `env`).
 
-This is **secure by construction, not by redaction**. No API key can leak because the tool never reads one.
+This is **secure by construction**: the code to read your secrets does not exist.
 
-## What gets shared — two artifacts
+## Is this safe to run?
 
-**1. Descriptor (always, safe by construction):**
+Short answer: **yes, and you don't have to take our word for it**. Here's literally everything that leaves your machine when you run `claude-share publish`:
 
-- ✅ Plugin names + marketplace sources (e.g. `superpowers@claude-plugins-official`)
-- ✅ MCP server identifiers + `command` + `args` + install method (`npm`/`pip`/`binary`/`manual`)
-- ✅ Marketplace registrations (e.g. `github.com/owner/repo`)
-- ✅ User-provided metadata: title, description, tags
+1. **Plugin identifiers** — e.g. `superpowers@claude-plugins-official` (version `5.0.7`). Public info. Anyone can install the same plugins themselves.
+2. **Marketplace sources** — e.g. `github.com/anthropics/claude-plugins-official`. Public GitHub URLs.
+3. **MCP server identifiers** — server `name`, the `command` (e.g. `uvx`), and the `args` (e.g. `["mcp-server-supabase"]`). Install recipe, no credentials.
+4. **The title, description, and tags you type** at the publish prompt.
 
-**2. Setup bundle (opt-in, default OFF, user-curated):**
+That's it. The full list fits in 4 bullets because that's **all the code can read**.
 
-- ✅ Hook scripts — user approves each file one-by-one with content preview
-- ✅ Global markdown files (`CLAUDE.md`, etc.) — user approves each file one-by-one
-- Architecturally unreachable: `settings.json`, `~/.claude.json`, MCP `env` values. The bundle-building code has no branch that reads these.
+Before anything is uploaded, the tool shows you the complete descriptor JSON on one screen and asks you to confirm. There is no "background upload", no opaque blob, no tarball.
 
-## What NEVER gets shared
+### What the tool CANNOT read (even if you asked it to)
 
-- ❌ `settings.env` (API keys, tokens, internal URLs) — unreachable by design
-- ❌ `~/.claude.json` (OAuth tokens, project state) — unreachable by design
-- ❌ MCP server `env` keys (tokens, database URLs) — unreachable by design
-- ❌ Absolute filesystem paths (`/Users/you/...`) — the descriptor never contains paths; bundle files reference `$HOME` and apply on the mirror side
+- ❌ `settings.json` — contains `env` (API keys), hook `command` strings. **No code path exists to read this file.**
+- ❌ `~/.claude.json` — contains OAuth tokens, project state. **No code path exists to read this file.**
+- ❌ Hook script bodies (`~/.claude/hooks/*.sh`) — can contain hardcoded tokens. **No code path exists to read these.**
+- ❌ Global markdown files (`~/.claude/CLAUDE.md`, etc.) — can contain company names, internal paths. **No code path exists to read these.**
+- ❌ MCP `env` blocks (service tokens, DB URLs). **No code path exists to read these.**
+- ❌ Absolute filesystem paths — the descriptor format has no fields where a path could appear.
 
-## Mirroring a shared setup
+This is **security by construction, not by redaction**. Regex-based secret scanning (the approach GitHub uses) missed 39 million secrets leaked on GitHub in 2024. We use a stronger guarantee: the forbidden code paths do not exist. Adding one would be a security-critical PR, reviewed as such.
 
-One command; the sender's env values never existed in the payload:
+## How mirroring works
+
+One command; the sender's env values never existed in the payload to begin with:
 
 ```bash
 npx -y claude-share mirror https://claude-share.dev/s/abc123
@@ -42,32 +44,53 @@ npx -y claude-share mirror https://claude-share.dev/s/abc123
 
 The tool:
 
-1. Runs `claude marketplace add`, `claude plugin install`, and `claude mcp add` for each descriptor identifier.
-2. If a setup bundle is present, extracts approved hook scripts and `.md` files into `~/.claude/` with `.bak` backup on any conflict (same apply logic as claude-snapshot).
-3. Prompts the recipient to supply their own env values for each MCP that needs them.
+1. Fetches the descriptor JSON from the URL.
+2. Shows the install plan: "N plugins to install, M MCPs to add, K marketplaces to register. X already installed locally (will skip)."
+3. On your confirmation, runs:
+   - `claude marketplace add <source>` for each marketplace
+   - `claude plugin install <name>@<marketplace>` for each plugin
+   - `claude mcp add <name> <command> <args>` for each MCP
+4. Prompts you to supply your own env values for each MCP that needs them (the sender never sent any).
 
-## Publishing
+**Idempotent:** re-running mirror on the same URL is a no-op for anything already installed. Safe to retry after partial failures.
 
-Primary path (recommended) — with the GitHub CLI:
+**Reproducible:** descriptor freezes each plugin's exact version, so mirroring 6 months from now installs the same versions the publisher exported.
+
+## How publishing works
+
+Primary path (recommended) — with the [GitHub CLI](https://cli.github.com):
 
 ```bash
-npx -y claude-share publish                 # descriptor only
-npx -y claude-share publish --with-bundle   # adds interactive file picker for hooks + .md
+npx -y claude-share publish
 ```
 
-Fallback path (no `gh` CLI) — opens a browser to a prefilled GitHub Issue Form. Descriptor only; no bundle in this path.
+The tool reads `~/.claude/` (identifiers only), asks for title/description/tags, shows the full descriptor JSON on one screen, and on your confirmation creates a GitHub issue on the registry repo. A Github Action validates the schema and commits the descriptor into the public gallery.
 
-Everything is GitHub-backed: no separate server, no account system beyond your GitHub account.
+Fallback path (no `gh` CLI) — opens a browser with a prefilled GitHub Issue Form for manual submission.
+
+Everything is GitHub-backed: no separate server, no external service, no account system beyond your GitHub account.
+
+## "But I want to share my custom hook / CLAUDE.md"
+
+Totally valid — and here's the clean path:
+
+1. Package your custom hook or CLAUDE.md template as a standalone Claude Code plugin (its own repo with a `.claude-plugin/plugin.json`).
+2. Publish it to any marketplace (your own GitHub repo is enough).
+3. Reference that plugin in your claude-share descriptor.
+
+Now it's shareable **and** reusable **and** versioned. Other users mirror your setup and get your hook as an installable plugin, not a raw script they had to trust.
+
+The constraint that "shared setups are composed of public building blocks" pushes everyone's customizations toward good packaging hygiene. This is a feature, not a limitation.
 
 ## Relation to claude-snapshot
 
 | | [claude-snapshot](https://github.com/adhenawer/claude-snapshot) | claude-share |
 |---|---|---|
-| Unit of transfer | `.tar.gz` with full file contents (including `settings.json`, MCP env) | descriptor (always) + optional user-curated bundle (hooks + `.md` only) |
+| Unit of transfer | `.tar.gz` with full file contents (including `settings.json`, MCP env, hooks, CLAUDE.md) | JSON descriptor (identifiers only) |
 | Destination | private (your own machines) | public (community gallery) |
-| Includes `settings.env` / MCP `env` / `.claude.json` | yes | **no, by construction** |
-| Includes hooks / `CLAUDE.md` | yes, full | **only with per-file user approval** |
-| Privacy model | local-only (no network) | secure-by-construction + per-file approval |
+| Reads any file with values or content | yes (by design for local backup) | **no — no code path exists** |
+| Can transmit a secret even if you ask it to | yes (it's your tarball, your risk) | **no — the code to do it doesn't exist** |
+| Privacy model | local-only (no network) | secure-by-construction |
 | Primary use case | backup, restore, multi-machine sync | discovery, showcase, one-command mirror |
 
 Both tools can coexist. claude-snapshot is the personal "save state" for your own machines; claude-share is the "post to community" surface.

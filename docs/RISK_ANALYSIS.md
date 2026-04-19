@@ -112,41 +112,38 @@ GitHub's 2024 stats: **39 million leaked secrets** despite push protection, part
 
 A small project cannot out-regex that flood. **For a community-wide share mechanism, a single leak from a single user is enough to trash the tool's reputation.** The tool's whole value prop is "safe to share" — one viral leak destroys it.
 
-## Architectural conclusion — two-path model
+## Architectural conclusion — single descriptor-only path
 
-claude-share has two transmission paths, both architecturally constrained:
+claude-share has exactly one transmission path. The descriptor collector has **no code path** that touches:
 
-### Descriptor path (always on)
+- `env` sections of `settings.json` or `mcpServers.*`
+- `command` strings under `settings.hooks`
+- `settings.json` or `~/.claude.json` as whole files
+- Hook file bodies (`~/.claude/hooks/*.sh`)
+- Global markdown file contents (`~/.claude/CLAUDE.md`, etc.)
 
-The **descriptor collector** has no code path that touches `env`, hook bodies, `.md` content, `settings.json` as a whole, or `~/.claude.json` as a whole. The only content that leaves the user's machine via the descriptor is:
+The only content that leaves the user's machine is:
 
-1. Plugin, marketplace, and MCP **names** (identifiers)
+1. Plugin, marketplace, and MCP **names** (public identifiers)
 2. MCP `command` + `args` (not `env`), with a secret-pattern warning on `args`
 3. User-entered metadata (title, description, tags)
 
-This is **security by construction**, not by policy. The collector cannot leak a secret because the code to read one does not exist.
+This is **security by construction**, not by policy. The collector cannot leak a value or a file body because the code to read either does not exist. Adding such a code path would be a security-critical review — not a flag toggle.
 
-### Bundle path (opt-in, default off)
+### What about personal customizations?
 
-The **bundle builder** (used only when the user opts in) has code paths that can read:
+A user with a custom hook script or a personal `CLAUDE.md` **cannot share them directly** through claude-share. That is intentional, not a gap.
 
-- `~/.claude/hooks/*.sh` (hook scripts)
-- `~/.claude/*.md` (global markdown at the root)
+The clean path for sharing a customization is: package it as a Claude Code plugin (public, installable, versioned) and reference that plugin in your descriptor. The claude-share ecosystem nudges users toward this hygiene — it's better for everyone than broadcasting raw file contents.
 
-Per-file approval is mandatory: for each candidate file, the CLI shows content inline and asks `keep? (y/N)`. Only approved files make it into the bundle.
+### Residual risk: the MCP `args` field
 
-The bundle builder has **no code path** to read:
+The one area where a determined user could still leak content is by inlining secrets into MCP `args` values (e.g. `args: ["--token=abc123"]`). This is unusual but possible. Mitigation:
 
-- `settings.json` (contains `env`, hook `command` strings)
-- `~/.claude.json` (OAuth tokens, project state)
-- Any MCP `env` block
+- The `publish` flow runs a secret-pattern regex over each `args` value
+- Any match prompts the user: "`args[2]` looks like a secret. Replace with a placeholder or confirm it's safe?"
+- If the user confirms, it ships as-is
 
-These classes of content are **unreachable**, not filtered. A bug in a regex redactor couldn't accidentally leak `settings.json` because the code does not know how to put it in the bundle.
+Regex-based warning is imperfect, but the surface is tiny (one field, typically short) and the user always sees the final descriptor before confirming publish.
 
-### Residual user responsibility (bundle path)
-
-A user COULD approve a hook file that contains a hardcoded token, or a `CLAUDE.md` that mentions their employer. The CLI shows the content before approval, with no obfuscation. That's a choice the user makes with the content visible in front of them.
-
-The tool does not make the choice for them, and it does not silently include content they haven't seen. The failure mode is an informed-user mistake, not a tool-default leak.
-
-See [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for the enforcement principles (P1 / P1 amended / P2 / P2.1).
+See [SECURITY_PREMISE.md](SECURITY_PREMISE.md) for the enforcement principles (P1, P2, P2.1).

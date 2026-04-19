@@ -2,40 +2,37 @@
 
 The principles that constrain every design decision in claude-share. Each principle is enforced by architecture, not by policy — so a compliant implementation is incapable of violating them.
 
-## [P1] Never transmit values without explicit, per-file user approval
+## [P1] Never transmit values or file contents
 
-The tool has two transmission paths, both subject to this principle:
-
-**Descriptor path (always):** collects, transmits, and stores only identifiers — plugin names, marketplace sources, MCP `command` + `args` (not `env`), user-entered metadata. The collector has **no code path** that reads:
+The tool collects, transmits, and stores **only identifiers** — plugin names, marketplace sources, MCP `command` + `args` (not `env`), user-entered metadata. The collector has **no code path** that reads:
 
 - `env` sections of `settings.json` or `mcpServers.*`
 - `command` strings under `settings.hooks`
 - Contents of `settings.json` or `~/.claude.json` as whole files
+- Hook file bodies (`~/.claude/hooks/*.sh`)
+- Global `.md` file contents (`~/.claude/CLAUDE.md`, etc.)
 
-These things are unreachable by the descriptor builder. You could not leak them through the descriptor even if you tried, because the code to read them does not exist.
-
-**Bundle path (opt-in):** users MAY include a `.tar.gz` with specific, hand-picked files — hook scripts and global `.md` files only. The CLI presents each candidate file's content for inline approval before inclusion. The user presses `y` per file. The bundle-building code has no branch for `settings.json`, `~/.claude.json`, or MCP `env`; these are unreachable by the bundler, not just filtered.
-
-**Enforcement for both paths:** the guarantee is architectural, not regex-based. The forbidden classes of content are unreachable code paths, not filtered strings.
+These are unreachable by the descriptor builder. You could not leak them even if you tried, because the code to read them does not exist. This is enforced at the source level — any PR that adds such a code path is a security-critical review, not a flag toggle.
 
 ## [P2] Secure by construction, not by redaction
 
 Regex-based secret scanning catches ~90% of known patterns and misses the long tail. We reject that approach. The architecture **removes the category** of possible leak rather than filtering instances.
 
-- **Descriptor:** no value-reading code exists → zero risk of value leak.
-- **Bundle:** no `settings.json` / `.claude.json` / env-reading code exists → those categories cannot be in the bundle. The files the bundle CAN contain (hooks, `.md`) are shown verbatim to the user before inclusion — approval, not redaction.
+- No value-reading code exists → zero risk of value leak.
+- No file-content-reading code exists → zero risk of accidentally shipping a hook body or a personal `CLAUDE.md`.
+- Redaction would catch fewer leaks than GitHub's own industrial-grade scanners (which missed 39M secrets in 2024). Architecture wins.
 
-Redaction would catch fewer leaks than GitHub's own industrial-grade scanners (which missed 39M secrets in 2024). Architecture wins.
+## [P2.1] Setups are composed of public building blocks only
 
-## [P2.1] Bundle is opt-in, default off, user-curated
+The descriptor references only things that are already publicly installable: plugins from public marketplaces, MCPs from public package registries, marketplaces hosted on public GitHub repos.
 
-The `publish` command asks once: "Include setup bundle? (N/y)". Default is No. Pressing Enter ships the descriptor only.
+Custom private hooks or a personal `CLAUDE.md` are NOT shareable via claude-share. The clean path for users who want to share customizations is to package them as a plugin (public, installable, versioned) and reference that plugin in the descriptor.
 
-If the user opts in, they enter an interactive file picker. For each eligible file (`hooks/*.sh`, `*.md` at `~/.claude/` root), the CLI shows the content inline and asks `keep? (y/N)`. Only approved files end up in the tar.gz.
+This constraint is intentional:
 
-The user sees the final tarball file list (names + sizes) before publish confirmation. No background upload, no implicit content.
-
-**Trade-off acknowledged:** the bundle path slightly enlarges the user's responsibility. A user could approve a hook file that contains a hardcoded token. That's their decision, made with the content shown in front of them on their own terminal. The tool does not decide for them.
+- It eliminates the entire class of "did I accidentally share a secret hook?" fears.
+- It nudges the ecosystem toward well-packaged public plugins.
+- It makes mirrors deterministic and fast (no file extraction, no conflict handling).
 
 ## [P3] Recipient installs identifiers, supplies values
 
@@ -89,19 +86,19 @@ v1 scope: email-based reporting, manual review. Automated moderation (anomaly de
 
 ## What these principles forbid
 
-- ❌ Uploading a `.tar.gz` that contains `settings.json`, `~/.claude.json`, or `env` sections (violates P1; these are architecturally unreachable by the bundler)
-- ❌ "Smart" redaction of hook contents or `settings.env` (violates P2 — redaction is the wrong mental model)
-- ❌ Bundling ANY file without per-file user approval (violates P2.1)
+- ❌ Transmitting `.tar.gz` (or any binary) containing user file contents (violates P1; such content is architecturally unreachable by the collector)
+- ❌ Reading `settings.json`, `~/.claude.json`, hook bodies, or `.md` file contents (violates P1 — the code does not exist)
+- ❌ "Smart" redaction of any content (violates P2 — redaction is the wrong mental model)
 - ❌ Forcing recipients to trust the source user's env values (violates P3)
 - ❌ Auto-generating setup descriptions from file content (violates P4)
-- ❌ Uploading without showing the user the descriptor + bundle file list first (violates P5)
+- ❌ Uploading without showing the user the full descriptor JSON first (violates P5)
 - ❌ "Delete" that just hides the URL but keeps data on the server (violates P6)
 
 ## What they permit
 
-- ✅ Sharing `{plugins, marketplaces, mcpServers: [{name, command, args}], title, description, tags}` (descriptor — always safe by construction)
-- ✅ Sharing a `.tar.gz` with user-approved hook scripts + `.md` files (bundle — opt-in, per-file approval)
-- ✅ Mirroring a shared setup: descriptor → `marketplace add` + `plugin install` + `mcp add`; bundle (if present) → extract to `~/.claude/` with `.bak` backup on conflict
+- ✅ Sharing `{plugins, marketplaces, mcpServers: [{name, command, args}], title, description, tags}` (descriptor — safe by construction)
+- ✅ Mirroring a shared setup: descriptor → `claude marketplace add` + `claude plugin install` + `claude mcp add` (idempotent, sequential)
 - ✅ Browsing gallery anonymously
 - ✅ Rating / favoriting via GitHub Issue reactions (anonymous-ish read, GitHub account required to write)
 - ✅ Deleting own setup, with cascade to canonical storage, caches, and index
+- ✅ Packaging a custom hook or personal `CLAUDE.md` as a standalone plugin first, then referencing it in a descriptor (the canonical "I want to share my customization" flow)
