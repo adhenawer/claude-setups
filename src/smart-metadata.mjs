@@ -135,17 +135,11 @@ export async function generateOverview(claudeHome, collected, bundleFiles) {
     skillContents.length ? `\n## Skills\n${skillContents.join('\n\n')}` : '',
   ].filter(Boolean).join('\n');
 
-  const prompt = `You are writing a detailed overview for a Claude Code setup being published to a community gallery. Write in markdown.
+  const prompt = `Write a concise overview for a Claude Code setup being published to a community gallery. Markdown format.
 
-The overview should help someone browsing the gallery understand:
-1. **What this setup does** — the developer's workflow philosophy
-2. **Plugins** — what each plugin provides and why it's included
-3. **MCP servers** — what external tools are connected and how they're used
-4. **Hooks** — what automation runs and when (explain the actual script logic)
-5. **Skills & Commands** — what custom capabilities are available
-6. **CLAUDE.md highlights** — key instructions and conventions
+Summarize what this setup includes and why someone would want to mirror it. Cover plugins, MCP servers, hooks, and skills briefly — one sentence each, not paragraphs. No "highlights" section. No bullet-heavy lists. Keep it factual and short.
 
-Write for someone evaluating whether to mirror this setup. Be specific about what each component does — don't just list names. Use ## headings for sections. Keep it under 4000 characters.
+Use ## headings. Keep the entire overview under 1500 characters.
 
 Setup contents:
 ${context}`;
@@ -177,5 +171,5 @@ ${context}`;
   }
   cleaned = lines.slice(0, lastGoodLine + 1).join('\n').trim();
 
-  return cleaned.length > 5000 ? cleaned.slice(0, 5000) : cleaned;
+  return cleaned.length > 2000 ? cleaned.slice(0, 2000) : cleaned;
 }
