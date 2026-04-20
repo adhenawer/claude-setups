@@ -34,7 +34,12 @@ function getGitHubUsername() {
   }
 }
 
-export async function generateMetadata(claudeHome, collected) {
+const COMMON_PLUGINS = new Set([
+  'superpowers', 'context7', 'claude-hud', 'claude-mem', 'token-optimizer',
+  'frontend-design', 'playwright', 'github', 'plugin-dev', 'snapshot',
+]);
+
+export async function generateMetadata(claudeHome, collected, bundleFiles = []) {
   const specialties = await loadSpecialties();
   const specialtyList = Object.entries(specialties)
     .map(([k, v]) => `${k}: ${v}`)
@@ -46,31 +51,71 @@ export async function generateMetadata(claudeHome, collected) {
     if (claudeMd.length > 2000) claudeMd = claudeMd.slice(0, 2000) + '\n...(truncated)';
   } catch {}
 
+  const rarePlugins = collected.plugins
+    .map(p => p.name)
+    .filter(n => !COMMON_PLUGINS.has(n));
+
+  const customFiles = (bundleFiles || []).map(f => f.relativePath || f.path);
+  const customHooks = customFiles.filter(p => p.startsWith('hooks/'));
+  const customSkills = customFiles.filter(p => p.startsWith('skills/'));
+  const customCommands = customFiles.filter(p => p.startsWith('commands/'));
+  const customAgents = customFiles.filter(p => p.startsWith('agents/'));
+
   const context = [
-    `Plugins: ${collected.plugins.map(p => p.name).join(', ') || 'none'}`,
+    `Plugins (all): ${collected.plugins.map(p => p.name).join(', ') || 'none'}`,
+    rarePlugins.length ? `Uncommon plugins (not in top-10): ${rarePlugins.join(', ')}` : 'Uncommon plugins: none',
     `MCP servers: ${collected.mcpServers.map(m => m.name).join(', ') || 'none'}`,
-    `Marketplaces: ${collected.marketplaces.map(m => m.name).join(', ') || 'none'}`,
-    claudeMd ? `\nCLAUDE.md (first 2000 chars):\n${claudeMd}` : '',
+    customHooks.length ? `Custom hooks: ${customHooks.join(', ')}` : 'Custom hooks: none',
+    customSkills.length ? `Custom skills: ${customSkills.join(', ')}` : 'Custom skills: none',
+    customCommands.length ? `Custom commands: ${customCommands.join(', ')}` : 'Custom commands: none',
+    customAgents.length ? `Custom agents: ${customAgents.join(', ')}` : 'Custom agents: none',
+    claudeMd ? `\nCLAUDE.md:\n${claudeMd}` : '',
   ].join('\n');
 
-  const prompt = `You are analyzing a Claude Code setup to generate publish metadata. Return a JSON object with these fields:
+  const prompt = `You are generating metadata for a Claude Code setup publishing to a community gallery.
 
+CRITICAL: The gallery displays setups like GitHub repos — the AUTHOR is the primary identifier. Titles do NOT need to be globally unique. Your job is to produce an HONEST, SPECIFIC title that reflects what makes THIS setup distinctive — not a generic marketing line.
+
+Step 1 — Identify the SIGNATURE (the most distinctive element):
+  a) Uncommon plugins (listed below, if any)
+  b) Custom hooks, skills, commands, or agents (user-authored, not from plugins)
+  c) Distinctive CLAUDE.md conventions (specific patterns, tool-chains, languages)
+  d) Unusual MCP servers
+
+Step 2 — Title rules (max 60 chars):
+  - If a signature exists → lead with it. Examples:
+    "RTK token proxy + subagent routing"
+    "Mobile conventions with Expo EAS workflow"
+    "Tray API integration setup"
+  - If NO signature (only popular plugins, no custom files, generic CLAUDE.md) → be honest:
+    "Basic fullstack setup"
+    "Standard backend starter"
+  - NEVER use generic marketing words: "comprehensive", "advanced", "best practices", "optimized", "production-grade".
+  - NEVER title it after what plugins DO — plugins are common; what's distinctive about THIS combination?
+
+Step 3 — Slug rules:
+  - Short kebab-case (3-5 words max), derived from the signature
+  - Not the title, a URL-friendly identifier
+
+Step 4 — Description (max 300 chars): factual, specific, leads with signature.
+
+Return ONLY this JSON:
 {
   "author": "github-username",
-  "slug": "short-kebab-case-id",
-  "title": "Concise title (max 80 chars)",
-  "description": "What makes this setup useful (max 500 chars)",
-  "tags": ["lowercase", "keywords"],
-  "specialties": ["pick-from-list-below"]
+  "slug": "signature-based-slug",
+  "title": "Signature-first title (max 60 chars)",
+  "description": "Factual, max 300 chars",
+  "tags": ["lowercase-keywords"],
+  "specialties": ["pick-1-to-3"]
 }
 
 Setup contents:
 ${context}
 
-Available specialties (pick 1-3 that best match):
+Available specialties:
 ${specialtyList}
 
-Infer the developer profile from plugins, MCP servers, and CLAUDE.md. For author, use "unknown" if you cannot determine the GitHub username. Return ONLY the JSON object, nothing else.`;
+For author, use "unknown" if you cannot determine the GitHub username.`;
 
   const output = await runClaude([
     '-p', prompt,

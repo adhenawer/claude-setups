@@ -32,7 +32,7 @@ async function promptLine(question) {
   });
 }
 
-async function resolveMetadata(parsed, claudeHome) {
+async function resolveMetadata(parsed, claudeHome, withBundle) {
   const flags = parsed.flags;
   const hasAllFlags = flags.title && flags.description && flags.tags
     && flags.author && flags.slug && flags.specialties;
@@ -51,10 +51,16 @@ async function resolveMetadata(parsed, claudeHome) {
   const { collect } = await import('./collect.mjs');
   const collected = await collect(claudeHome);
 
+  let bundleFiles = [];
+  if (withBundle) {
+    const { collectBundleCandidates } = await import('./bundle-collect.mjs');
+    bundleFiles = await collectBundleCandidates(claudeHome);
+  }
+
   const { isClaudeAvailable, generateMetadata } = await import('./smart-metadata.mjs');
   if (await isClaudeAvailable()) {
     console.error('Analyzing your setup with Claude...');
-    const suggested = await generateMetadata(claudeHome, collected);
+    const suggested = await generateMetadata(claudeHome, collected, bundleFiles);
     if (suggested) {
       console.error('');
       console.error(`  author:       ${suggested.author}`);
@@ -100,7 +106,7 @@ async function cmdPublish(parsed) {
   const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
   const registryRepo = parsed.flags['registry-repo'] || 'adhenawer/claude-setups-registry';
 
-  const meta = await resolveMetadata(parsed, claudeHome);
+  const meta = await resolveMetadata(parsed, claudeHome, withBundle);
 
   let overview = null;
   const { isClaudeAvailable, generateOverview } = await import('./smart-metadata.mjs');
