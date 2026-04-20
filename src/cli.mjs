@@ -96,7 +96,7 @@ async function resolveMetadata(parsed, claudeHome) {
 }
 
 async function cmdPublish(parsed) {
-  const withBundle = Boolean(parsed.flags['with-bundle']);
+  const withBundle = !parsed.flags['no-bundle'];
   const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
   const registryRepo = parsed.flags['registry-repo'] || 'adhenawer/claude-setups-registry';
 

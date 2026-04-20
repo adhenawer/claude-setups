@@ -47,7 +47,7 @@ npx -y claude-setups publish
 
 That's it. The CLI uses `claude -p` to analyze your setup and suggest title, description, tags, and specialties automatically. You review the suggestions, confirm or edit, and publish. No flags needed.
 
-If `--with-bundle` is passed, the tool also collects your hooks, `CLAUDE.md`, skills, commands, and agents — showing each file for interactive include/exclude with [gitleaks](https://github.com/gitleaks/gitleaks) regex scanning. Nothing uploads until you type `publish`.
+By default, publish includes your hooks, `CLAUDE.md`, skills, commands, and agents as a bundle — showing each file for interactive include/exclude with [gitleaks](https://github.com/gitleaks/gitleaks) regex scanning. Nothing uploads until you type `publish`. Use `--no-bundle` to publish only plugin/MCP identifiers.
 
 Flags (`--author`, `--slug`, `--title`, etc.) are still supported for scripting and CI.
 
