@@ -34,11 +34,6 @@ function getGitHubUsername() {
   }
 }
 
-const COMMON_PLUGINS = new Set([
-  'superpowers', 'context7', 'claude-hud', 'claude-mem', 'token-optimizer',
-  'frontend-design', 'playwright', 'github', 'plugin-dev', 'snapshot',
-]);
-
 export async function generateMetadata(claudeHome, collected, bundleFiles = []) {
   const specialties = await loadSpecialties();
   const specialtyList = Object.entries(specialties)
@@ -51,59 +46,41 @@ export async function generateMetadata(claudeHome, collected, bundleFiles = []) 
     if (claudeMd.length > 2000) claudeMd = claudeMd.slice(0, 2000) + '\n...(truncated)';
   } catch {}
 
-  const rarePlugins = collected.plugins
-    .map(p => p.name)
-    .filter(n => !COMMON_PLUGINS.has(n));
-
-  const customFiles = (bundleFiles || []).map(f => f.relativePath || f.path);
-  const customHooks = customFiles.filter(p => p.startsWith('hooks/'));
-  const customSkills = customFiles.filter(p => p.startsWith('skills/'));
-  const customCommands = customFiles.filter(p => p.startsWith('commands/'));
-  const customAgents = customFiles.filter(p => p.startsWith('agents/'));
+  const bundleFileNames = (bundleFiles || [])
+    .map(f => f.relativePath || f.path)
+    .join(', ');
 
   const context = [
-    `Plugins (all): ${collected.plugins.map(p => p.name).join(', ') || 'none'}`,
-    rarePlugins.length ? `Uncommon plugins (not in top-10): ${rarePlugins.join(', ')}` : 'Uncommon plugins: none',
+    `Plugins: ${collected.plugins.map(p => p.name).join(', ') || 'none'}`,
     `MCP servers: ${collected.mcpServers.map(m => m.name).join(', ') || 'none'}`,
-    customHooks.length ? `Custom hooks: ${customHooks.join(', ')}` : 'Custom hooks: none',
-    customSkills.length ? `Custom skills: ${customSkills.join(', ')}` : 'Custom skills: none',
-    customCommands.length ? `Custom commands: ${customCommands.join(', ')}` : 'Custom commands: none',
-    customAgents.length ? `Custom agents: ${customAgents.join(', ')}` : 'Custom agents: none',
+    bundleFileNames ? `Bundle files: ${bundleFileNames}` : '',
     claudeMd ? `\nCLAUDE.md:\n${claudeMd}` : '',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
-  const prompt = `You are generating metadata for a Claude Code setup publishing to a community gallery.
+  const prompt = `You are generating metadata for a Claude Code setup being published to a community gallery.
 
-CRITICAL: The gallery displays setups like GitHub repos — the AUTHOR is the primary identifier. Titles do NOT need to be globally unique. Your job is to produce an HONEST, SPECIFIC title that reflects what makes THIS setup distinctive — not a generic marketing line.
+The gallery displays setups like GitHub repos — shown as @author/slug. The title is a short descriptor of the AUTHOR'S PROFILE, not a marketing pitch for the tools.
 
-Step 1 — Identify the SIGNATURE (the most distinctive element):
-  a) Uncommon plugins (listed below, if any)
-  b) Custom hooks, skills, commands, or agents (user-authored, not from plugins)
-  c) Distinctive CLAUDE.md conventions (specific patterns, tool-chains, languages)
-  d) Unusual MCP servers
+Title rules (max 60 chars): describe the developer's profile or workflow style, not the plugins.
+  Good examples:
+    "Fullstack developer with TDD workflow"
+    "Mobile engineer — Expo + EAS"
+    "Backend + DevOps setup"
+    "Frontend designer setup"
+  Bad examples:
+    "Claude Code Best Practices & Token Optimization" (generic marketing)
+    "Comprehensive fullstack configuration" (generic marketing)
+    "Advanced agent orchestration" (generic marketing)
 
-Step 2 — Title rules (max 60 chars):
-  - If a signature exists → lead with it. Examples:
-    "RTK token proxy + subagent routing"
-    "Mobile conventions with Expo EAS workflow"
-    "Tray API integration setup"
-  - If NO signature (only popular plugins, no custom files, generic CLAUDE.md) → be honest:
-    "Basic fullstack setup"
-    "Standard backend starter"
-  - NEVER use generic marketing words: "comprehensive", "advanced", "best practices", "optimized", "production-grade".
-  - NEVER title it after what plugins DO — plugins are common; what's distinctive about THIS combination?
+Description (max 300 chars): factual, what this setup is for.
 
-Step 3 — Slug rules:
-  - Short kebab-case (3-5 words max), derived from the signature
-  - Not the title, a URL-friendly identifier
-
-Step 4 — Description (max 300 chars): factual, specific, leads with signature.
+Slug: short kebab-case (2-4 words), URL-friendly.
 
 Return ONLY this JSON:
 {
   "author": "github-username",
-  "slug": "signature-based-slug",
-  "title": "Signature-first title (max 60 chars)",
+  "slug": "short-slug",
+  "title": "User-profile-focused title (max 60 chars)",
   "description": "Factual, max 300 chars",
   "tags": ["lowercase-keywords"],
   "specialties": ["pick-1-to-3"]
