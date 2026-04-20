@@ -25,8 +25,8 @@ export async function publishViaGh(opts) {
   let tempTarPath = null;
   if (withBundle) {
     const candidates = await collectBundleCandidates(claudeHome);
-    console.error(`\n📦 Bundle: ${candidates.length} files found. Review each one:\n`);
-    const approved = await bundlePicker(candidates);
+    console.error(`\n📦 Bundle: ${candidates.length} files included\n`);
+    const approved = candidates;
     if (approved.length > 0) {
       const tempDir = await mkdtemp(join(tmpdir(), 'cs-pub-'));
       tempTarPath = join(tempDir, `${slug}.tar.gz`);
