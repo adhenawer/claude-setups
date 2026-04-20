@@ -158,6 +158,24 @@ ${context}`;
   ]);
 
   if (!output) return null;
-  const cleaned = output.replace(/^```markdown\n?/, '').replace(/\n?```$/, '').trim();
+  let cleaned = output
+    .replace(/^```markdown\n?/, '')
+    .replace(/\n?```\s*$/, '')
+    .trim();
+
+  // Claude -p sometimes appends system prompt noise after the actual content.
+  // Cut at the last markdown-like line (heading, list item, paragraph, or code block).
+  const lines = cleaned.split('\n');
+  let lastGoodLine = lines.length - 1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (line === '' || line.startsWith('#') || line.startsWith('-') || line.startsWith('*')
+      || line.startsWith('`') || line.startsWith('>') || /^[A-Z]/.test(line) || /[.!)]$/.test(line)) {
+      lastGoodLine = i;
+      break;
+    }
+  }
+  cleaned = lines.slice(0, lastGoodLine + 1).join('\n').trim();
+
   return cleaned.length > 5000 ? cleaned.slice(0, 5000) : cleaned;
 }
