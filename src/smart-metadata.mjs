@@ -97,51 +97,24 @@ Infer the developer profile from plugins, MCP servers, and CLAUDE.md. For author
 }
 
 export async function generateOverview(claudeHome, collected, bundleFiles) {
-  let claudeMd = '';
-  try {
-    claudeMd = await readFile(join(claudeHome, 'CLAUDE.md'), 'utf-8');
-    if (claudeMd.length > 3000) claudeMd = claudeMd.slice(0, 3000) + '\n...(truncated)';
-  } catch {}
-
-  const bundleList = (bundleFiles || [])
-    .map(f => `- ${f.relativePath || f.path} (${f.size || '?'} bytes)`)
-    .join('\n');
-
-  const hookContents = [];
-  for (const f of (bundleFiles || [])) {
-    if ((f.relativePath || f.path || '').startsWith('hooks/') && f.content) {
-      const preview = f.content.length > 500 ? f.content.slice(0, 500) + '...' : f.content;
-      hookContents.push(`### ${f.relativePath || f.path}\n\`\`\`bash\n${preview}\n\`\`\``);
-    }
-  }
-
-  const skillContents = [];
-  for (const f of (bundleFiles || [])) {
-    const p = f.relativePath || f.path || '';
-    if (p.startsWith('skills/') && f.content) {
-      const preview = f.content.length > 300 ? f.content.slice(0, 300) + '...' : f.content;
-      skillContents.push(`### ${p}\n${preview}`);
-    }
-  }
+  const bundleFileNames = (bundleFiles || [])
+    .map(f => f.relativePath || f.path)
+    .join(', ');
 
   const context = [
-    `## Setup inventory`,
     `Plugins: ${collected.plugins.map(p => `${p.name} (${p.marketplace}@${p.version})`).join(', ') || 'none'}`,
     `MCP servers: ${collected.mcpServers.map(m => `${m.name} (${m.command} ${(m.args||[]).join(' ')})`).join(', ') || 'none'}`,
     `Marketplaces: ${collected.marketplaces.map(m => `${m.name} (${m.repo})`).join(', ') || 'none'}`,
-    bundleList ? `\nBundle files:\n${bundleList}` : '',
-    claudeMd ? `\n## CLAUDE.md\n${claudeMd}` : '',
-    hookContents.length ? `\n## Hook scripts\n${hookContents.join('\n\n')}` : '',
-    skillContents.length ? `\n## Skills\n${skillContents.join('\n\n')}` : '',
+    bundleFileNames ? `Bundle files: ${bundleFileNames}` : '',
   ].filter(Boolean).join('\n');
 
-  const prompt = `Write a concise overview for a Claude Code setup being published to a community gallery. Markdown format.
+  const prompt = `Write a concise overview for a Claude Code setup. Markdown format.
 
-Summarize what this setup includes and why someone would want to mirror it. Cover plugins, MCP servers, hooks, and skills briefly — one sentence each, not paragraphs. No "highlights" section. No bullet-heavy lists. Keep it factual and short.
+Summarize what this setup includes and why someone would mirror it. One sentence per component. No file contents, no code blocks, no highlights section. The bundle files will be shown separately in an interactive viewer.
 
-Use ## headings. Keep the entire overview under 1500 characters.
+Keep under 1500 characters.
 
-Setup contents:
+Setup:
 ${context}`;
 
   const output = await runClaude([
