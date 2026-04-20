@@ -19,20 +19,20 @@ describe('runClaude', () => {
 });
 
 describe('marketplaceAdd / pluginInstall / mcpAdd', () => {
-  it('marketplaceAdd shells out with --source flag', async () => {
+  it('marketplaceAdd shells out with plugin marketplace add <source>', async () => {
     const { marketplaceAdd } = await import('../src/claude.mjs');
     const calls = [];
     const mockRun = async (args) => { calls.push(args); return { stdout: '', stderr: '', code: 0 }; };
     await marketplaceAdd('my-mkt', 'github.com/a/b', { run: mockRun });
-    assert.deepEqual(calls[0], ['marketplace', 'add', 'my-mkt', '--source', 'github.com/a/b']);
+    assert.deepEqual(calls[0], ['plugin', 'marketplace', 'add', 'github.com/a/b']);
   });
 
-  it('pluginInstall shells out with @marketplace syntax + --version', async () => {
+  it('pluginInstall shells out with plugin@marketplace syntax', async () => {
     const { pluginInstall } = await import('../src/claude.mjs');
     const calls = [];
     const mockRun = async (args) => { calls.push(args); return { stdout: '', stderr: '', code: 0 }; };
     await pluginInstall('p', 'mkt', '1.2.3', { run: mockRun });
-    assert.deepEqual(calls[0], ['plugin', 'install', 'p@mkt', '--version', '1.2.3']);
+    assert.deepEqual(calls[0], ['plugin', 'install', 'p@mkt']);
   });
 
   it('mcpAdd shells out with command + args', async () => {
@@ -54,7 +54,7 @@ describe('marketplaceAdd / pluginInstall / mcpAdd', () => {
 });
 
 describe('listInstalledPlugins / listMarketplaces / listMcpServers (idempotency helpers)', () => {
-  it('parses `claude plugin list --format json` output', async () => {
+  it('parses `claude plugin list --json` output', async () => {
     const { listInstalledPlugins } = await import('../src/claude.mjs');
     const mockRun = async () => ({
       stdout: JSON.stringify([

@@ -20,14 +20,17 @@ export function runClaude(args, options = {}) {
 
 export async function marketplaceAdd(name, source, options = {}) {
   const { run = runClaude } = options;
-  const r = await run(['marketplace', 'add', name, '--source', source]);
+  // Claude CLI: `plugin marketplace add <source>` — name is derived from source
+  const r = await run(['plugin', 'marketplace', 'add', source]);
   if (r.code !== 0) throw new Error(`marketplace add failed (${r.code}): ${r.stderr}`);
   return r;
 }
 
 export async function pluginInstall(name, marketplace, version, options = {}) {
   const { run = runClaude } = options;
-  const r = await run(['plugin', 'install', `${name}@${marketplace}`, '--version', version]);
+  // Claude CLI: `plugin install <name>@<marketplace>` — version comes from marketplace
+  const spec = marketplace ? `${name}@${marketplace}` : name;
+  const r = await run(['plugin', 'install', spec]);
   if (r.code !== 0) throw new Error(`plugin install failed (${r.code}): ${r.stderr}`);
   return r;
 }
@@ -42,9 +45,15 @@ export async function mcpAdd(name, command, args, options = {}) {
 export async function listInstalledPlugins(options = {}) {
   const { run = runClaude } = options;
   try {
-    const r = await run(['plugin', 'list', '--format', 'json']);
+    const r = await run(['plugin', 'list', '--json']);
     if (r.code !== 0) return [];
-    return JSON.parse(r.stdout || '[]');
+    const raw = JSON.parse(r.stdout || '[]');
+    // Claude CLI returns { id: "name@marketplace", version, ... }
+    return raw.map(p => {
+      if (p.name && p.marketplace) return p;
+      const [name, marketplace] = (p.id || '').split('@');
+      return { name, marketplace, version: p.version };
+    });
   } catch {
     return [];
   }
@@ -53,7 +62,7 @@ export async function listInstalledPlugins(options = {}) {
 export async function listMarketplaces(options = {}) {
   const { run = runClaude } = options;
   try {
-    const r = await run(['marketplace', 'list', '--format', 'json']);
+    const r = await run(['plugin', 'marketplace', 'list', '--json']);
     if (r.code !== 0) return [];
     return JSON.parse(r.stdout || '[]');
   } catch {

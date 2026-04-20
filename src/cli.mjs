@@ -179,24 +179,22 @@ async function cmdMirror(parsed) {
 
   const result = await mirror(urlOrId);
 
-  // Fire-and-forget mirror counter (doesn't affect mirror success)
-  if (result.status === 'ok') {
-    const registryRepo = parsed.flags['registry-repo'] || 'adhenawer/claude-setups-registry';
-    try {
-      const { runGh } = await import('./gh.mjs');
-      const body = JSON.stringify({
-        target: { author: descriptor.id.author, slug: descriptor.id.slug },
-        at: new Date().toISOString(),
-      });
-      await runGh([
-        'issue', 'create',
-        '--repo', registryRepo,
-        '--title', `[mirror] ${descriptor.id.author}/${descriptor.id.slug}`,
-        '--body', body,
-        '--label', 'mirror:count',
-      ]);
-    } catch {}
-  }
+  // Fire-and-forget mirror counter — always fires, even on partial
+  const registryRepo = parsed.flags['registry-repo'] || 'adhenawer/claude-setups-registry';
+  try {
+    const { runGh } = await import('./gh.mjs');
+    const body = JSON.stringify({
+      target: { author: descriptor.id.author, slug: descriptor.id.slug },
+      at: new Date().toISOString(),
+    });
+    await runGh([
+      'issue', 'create',
+      '--repo', registryRepo,
+      '--title', `[mirror] ${descriptor.id.author}/${descriptor.id.slug}`,
+      '--body', body,
+      '--label', 'mirror:count',
+    ]);
+  } catch {}
 
   console.log(JSON.stringify({
     status: result.status,
