@@ -59,9 +59,14 @@ export async function publishViaGh(opts) {
     const tarBytes = await readFile(tempTarPath);
     const base64 = tarBytes.toString('base64');
 
-    // 1. Get default branch HEAD sha
+    // 1. Get default branch name, then HEAD sha
+    const branchRes = await gh(
+      ['api', `repos/${registryRepo}`, '--jq', '.default_branch'],
+      {}
+    );
+    const defaultBranch = branchRes.stdout.trim() || 'main';
     const headRes = await gh(
-      ['api', `repos/${registryRepo}/git/refs/heads/main`, '--jq', '.object.sha'],
+      ['api', `repos/${registryRepo}/git/refs/heads/${defaultBranch}`, '--jq', '.object.sha'],
       {}
     );
     const parentSha = headRes.stdout.trim();
