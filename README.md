@@ -1,120 +1,127 @@
-# claude-setups
+<p align="center">
+  <strong>claude-setups</strong>
+</p>
 
-**Discover and share Claude Code setups — the full thing: hooks, instructions, skills. Never your secrets.** Publish your setup to a community gallery; mirror someone else's with a single command. Env values, OAuth tokens, and `settings.json` are architecturally unreachable — the tool cannot transmit them, even by mistake.
+<p align="center">
+  Discover how people configure Claude Code — and share your own setup with one command.
+</p>
 
-> **Status:** v0.3.0 — publish (with optional `--with-bundle`), mirror (with bundle extraction), revoke. All three plans (v0.1, v0.2, v0.3) complete. Ready for npm publish.
+<p align="center">
+  <a href="https://www.npmjs.com/package/claude-setups"><img src="https://img.shields.io/npm/v/claude-setups?color=blue" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/claude-setups"><img src="https://img.shields.io/npm/dm/claude-setups" alt="npm downloads"></a>
+  <a href="https://github.com/adhenawer/claude-setups/actions"><img src="https://github.com/adhenawer/claude-setups/actions/workflows/test.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/adhenawer/claude-setups/blob/master/LICENSE"><img src="https://img.shields.io/github/license/adhenawer/claude-setups" alt="License"></a>
+  <a href="https://github.com/adhenawer/claude-setups"><img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node >= 18"></a>
+  <a href="https://adhenawer.github.io/claude-setups-registry/"><img src="https://img.shields.io/badge/gallery-live-blueviolet" alt="Gallery"></a>
+</p>
 
-## Premise
+---
 
-Sharing a Claude Code setup today means dumping your `~/.claude/` into a public GitHub repo with zero review — exactly how the industry leaked **39 million secrets on GitHub in 2024**. Plugin marketplaces solve part of it, but only for things you already packaged as plugins. Your custom hooks, your carefully-tuned `CLAUDE.md`, your personal skills — those still live in raw files.
+People are sharing Claude Code setups everywhere — Reddit posts, GitHub repos, blog articles — but there's no single place to browse, compare, and install them. **claude-setups** is that place: a community registry where you publish your hooks, `CLAUDE.md`, skills, commands, and agents, and anyone can mirror your entire setup with one command.
 
-**claude-setups** splits the problem into two architectural layers:
-
-1. **Values and tokens are architecturally unreachable.** `settings.json`, `~/.claude.json`, every `env` section, MCP tokens — the tool has no code path that reads them. They cannot travel.
-2. **Content files (hooks, `CLAUDE.md`, skills) ARE shared** — but only after you see every file, run secret-regex scans, and type `publish` to confirm.
-
-This is not redaction. It's a hard split between "architecturally cannot leak" and "you reviewed it and approved".
-
-## Is this safe to run?
-
-The goal of this section is to remove every reason to be afraid of clicking publish.
-
-### What the tool CAN read and may share
-
-Only these, and only after you see each one in a preview screen:
-
-- **Plugin + marketplace identifiers** from `~/.claude/plugins/*` — plugin names, marketplace sources, versions. Public info; anyone can install the same plugins themselves.
-- **MCP server name + `command` + `args`** from `~/.claude.json`'s `mcpServers` key — **never `env`**.
-- **Hook scripts** (`~/.claude/hooks/*.sh`) — file contents, shown fully in preview before include/exclude.
-- **Global markdown** (`~/.claude/CLAUDE.md`, other `*.md` at the root) — shown fully in preview.
-- **Custom skills / commands / agents** (`~/.claude/skills/*`, `commands/*`, `agents/*`) — shown fully in preview.
-- **The title, description, and tags you type** at the publish prompt.
-
-Every file is:
-1. Shown to you with size, path, and content preview.
-2. Scanned by a **secret-pattern regex** (API keys, bearer tokens, private keys). Any match is flagged with line numbers. You can edit the file and re-run, or exclude it.
-3. Toggleable per-file: default `include = yes`, you can press `n` to exclude any file.
-4. Summarized in a final preview screen before publish.
-5. Gated behind typing the word `publish` — a single `y` is not enough. The typed word is deliberate friction so nobody uploads on autopilot.
-
-### What the tool CANNOT read (ever, even if you asked it to)
-
-- ❌ `~/.claude/settings.json` — contains `env` (API keys), hook `command` strings. **No code path exists to read this file.**
-- ❌ `~/.claude.json` — contains OAuth tokens, project state. **No code path exists to read this file.**
-- ❌ `env` sections of `mcpServers.*` — service tokens, database URLs. **No code path exists to read these.**
-- ❌ `settings.hooks.*.command` strings (different from hook script files) — can inline tokens. **No code path exists to read these.**
-- ❌ Absolute filesystem paths inside any file — the bundler strips `$HOME` during assembly; the descriptor format has no field where an absolute path could appear.
-
-These are **security by construction, not by redaction**. GitHub's industrial-grade regex scanners missed 39M secrets in 2024 — a small project cannot win by regex alone. So we don't try: the dangerous categories live in code paths that don't exist. Adding one would be a security-critical PR, reviewed as such.
-
-## How mirroring works
-
-One command; the sender's secrets never existed in the payload to begin with, and hook/`.md` files arrive with `.bak` backup on any conflict:
+## Quick Start
 
 ```bash
-# Short form (resolves against the default registry)
+# Mirror someone's setup
 npx -y claude-setups mirror alice/demo-setup
 
-# Full URL form
-npx -y claude-setups mirror https://adhenawer.github.io/claude-setups-registry/s/alice/demo-setup.json
-```
-
-The tool:
-
-1. Fetches the descriptor JSON + (if any) the bundle `.tar.gz` from the URL.
-2. Shows the full install plan: plugins, MCPs, marketplaces, bundle files — with local-vs-incoming diff and per-file conflict preview.
-3. You type `mirror` to confirm.
-4. Installs identifiers idempotently: `claude marketplace add`, `claude plugin install`, `claude mcp add` (skipping anything already present at the requested version).
-5. Extracts bundle files into `~/.claude/`, backing up any existing file as `<name>.bak` before overwriting. Hook scripts get `chmod +x`.
-6. Prompts you to supply your own env values for each MCP that needs them (the sender never sent any).
-
-**Idempotent:** re-running mirror on the same URL is safe. Already-installed plugins and already-extracted files (detected by SHA-256) are skipped.
-
-**Reproducible:** descriptor freezes each plugin's exact version, so mirroring months later installs the same versions the publisher exported.
-
-## How publishing works
-
-Primary path (recommended) — with the [GitHub CLI](https://cli.github.com):
-
-```bash
-npx -y claude-setups publish
-```
-
-The tool walks you through: read sources → enter metadata → see secret-regex warnings → file-by-file include/exclude → final preview → type `publish`. Creates a GitHub issue on the registry repo; a GitHub Action validates and moves the content into the public gallery.
-
-### With bundle (opt-in)
-
-```bash
+# Publish yours
 npx -y claude-setups publish --with-bundle \
-  --author alice --slug my-setup \
-  --title "My setup" --description "..." --tags py,backend
+  --author yourname --slug my-setup \
+  --title "My setup" --description "Backend + DevOps" \
+  --tags py,backend --specialties backend
 ```
 
-The `--with-bundle` flag triggers file-by-file interactive preview: you see each hook script, markdown file, skill, command, and agent; the tool runs a gitleaks regex scan and warns about suspicious content; you toggle include/exclude per file; nothing is uploaded until you type `publish` to confirm.
+## What Gets Shared
 
-`settings.json`, `~/.claude.json`, and MCP `env` sections are architecturally unreachable — no code path exists to read them. You cannot leak what the tool cannot read.
+| Shared (you review each file) | Never shared (no code path exists) |
+|---|---|
+| Plugin & marketplace identifiers | `settings.json` |
+| MCP server names + commands | `~/.claude.json` (OAuth tokens) |
+| Hook scripts (`hooks/*.sh`) | MCP `env` sections (API keys) |
+| `CLAUDE.md` and root `*.md` | Absolute filesystem paths |
+| Skills, commands, agents | |
 
-Fallback path (no `gh` CLI) — opens a browser with a prefilled GitHub Issue Form for descriptor-only submission (bundle support requires `gh` for clean binary push).
+## Features
 
-Everything is GitHub-backed: no separate server, no external service, no account beyond your GitHub account.
+### Publish
+
+Share your Claude Code setup with the community. The tool reads your `~/.claude/` directory, collects identifiers (plugins, MCPs, marketplaces) and optionally bundles content files (hooks, markdown, skills).
+
+```bash
+npx -y claude-setups publish --with-bundle
+```
+
+**Interactive file review** — every file is shown with path, size, and full content. You include or exclude each one individually. A built-in [gitleaks](https://github.com/gitleaks/gitleaks)-based regex scanner flags API keys, tokens, and private keys before anything leaves your machine. Nothing uploads until you type `publish`.
+
+### Mirror
+
+Replicate someone else's setup on your machine. One command installs plugins, marketplaces, MCP servers, and extracts bundle files — all idempotently.
+
+```bash
+npx -y claude-setups mirror alice/demo-setup
+```
+
+- Installs plugins at the exact version the publisher exported
+- Extracts hooks, skills, commands into `~/.claude/`
+- Backs up existing files as `.bak` on conflict
+- Skips anything already installed (safe to re-run)
+- Sets `chmod +x` on hook scripts automatically
+
+### Browse
+
+Explore published setups in the community gallery:
+
+```bash
+npx -y claude-setups browse
+```
+
+Or visit the [gallery](https://adhenawer.github.io/claude-setups-registry/) directly.
+
+### Revoke
+
+Remove a previously published setup from the registry:
+
+```bash
+npx -y claude-setups revoke --author yourname --slug my-setup
+```
+
+## How It Works
+
+```
+┌──────────────┐     publish      ┌──────────────────┐     GitHub Action     ┌─────────────┐
+│  your        │  ──────────────► │  GitHub Issue     │  ─────────────────►  │  Registry    │
+│  ~/.claude/  │   descriptor +   │  (setup:submission│    validate + move   │  (gallery +  │
+│              │   bundle.tar.gz  │   label)          │                      │   JSON API)  │
+└──────────────┘                  └──────────────────┘                      └──────┬───────┘
+                                                                                   │
+┌──────────────┐     mirror       ┌──────────────────┐                             │
+│  their       │  ◄────────────── │  Descriptor JSON  │  ◄─────────────────────────┘
+│  ~/.claude/  │   fetch + extract│  + bundle.tar.gz  │
+└──────────────┘                  └──────────────────┘
+```
+
+The registry is a static GitHub Pages site — no server, no database, no accounts beyond GitHub. Publishing creates a GitHub Issue; a GitHub Action validates and ingests it. Mirroring fetches static JSON + tarball.
 
 ## Relation to claude-snapshot
 
 | | [claude-snapshot](https://github.com/adhenawer/claude-snapshot) | claude-setups |
 |---|---|---|
-| Destination | private (your own machines) | public (community gallery) |
-| Reads `settings.json` / `~/.claude.json` | yes, fully | **no — no code path exists** |
-| Can leak `env` values or OAuth tokens | yes (it's your local tarball) | **no — code to read them doesn't exist** |
-| Shares hook scripts / `CLAUDE.md` | yes, automatically | **yes, but with per-file preview + regex + typed confirm** |
-| Privacy model | local-only (no network) | architectural exclusion + mandatory user review |
-| Primary use case | backup, restore, multi-machine sync | discovery, showcase, one-command mirror |
+| Purpose | Backup & sync across your own machines | Share with the community |
+| Audience | Private (your machines only) | Public (community gallery) |
+| Reads `settings.json` | Yes | No |
+| Use case | Multi-machine sync, disaster recovery | Discovery, showcase, one-command clone |
 
-Both tools can coexist. claude-snapshot is the personal "save state" for your own machines (trust yourself with your own secrets); claude-setups is the "post to community" surface (the tool cannot leak secrets, and you review every file before publish).
+Both tools coexist. Use claude-snapshot for private backup; use claude-setups to share publicly.
 
-## Status
+## Security
 
-v0.3.0 — all three implementation plans complete. Publish, mirror, and revoke are live. Bundle support (hooks, CLAUDE.md, skills, commands, agents) with gitleaks scanning and interactive preview shipped in v0.3. Research and architectural premise documented in [`docs/`](docs/).
+Sensitive files (`settings.json`, `~/.claude.json`, MCP `env` sections) are excluded by design — no code path exists to read them. Content files go through interactive preview with gitleaks regex scanning before publish. Full details in [`docs/SECURITY_PREMISE.md`](docs/SECURITY_PREMISE.md).
+
+## Contributing
+
+PRs welcome! See the [registry repo](https://github.com/adhenawer/claude-setups-registry) for gallery/validation contributions.
 
 ## License
 
-MIT
+[MIT](LICENSE)
