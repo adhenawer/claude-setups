@@ -55,76 +55,81 @@ export async function publishViaGh(opts) {
 
   // Push bundle tarball to temp branch (if present)
   if (bundleInfo.present && tempTarPath) {
+    async function ghApi(label, args, options = {}) {
+      const res = await gh(args, options);
+      if (res.code !== 0) {
+        throw new Error(`${label} failed (exit ${res.code}): ${res.stderr || res.stdout}`);
+      }
+      const out = res.stdout.trim();
+      if (!out) {
+        throw new Error(`${label} returned empty response. stderr: ${res.stderr}`);
+      }
+      return out;
+    }
+
     const tempBranch = `bundle/${author}-${slug}-${Date.now()}`;
     const tarBytes = await readFile(tempTarPath);
     const base64 = tarBytes.toString('base64');
 
-    // 1. Get default branch name, then HEAD sha
-    const branchRes = await gh(
+    console.error(`\n📤 Pushing bundle to ${registryRepo}...`);
+
+    // 1. Detect default branch
+    const defaultBranch = await ghApi(
+      'detect default branch',
       ['api', `repos/${registryRepo}`, '--jq', '.default_branch'],
-      {}
     );
-    const defaultBranch = branchRes.stdout.trim() || 'main';
-    const headRes = await gh(
+    console.error(`  default branch: ${defaultBranch}`);
+
+    // 2. Get HEAD sha
+    const parentSha = await ghApi(
+      'get HEAD sha',
       ['api', `repos/${registryRepo}/git/refs/heads/${defaultBranch}`, '--jq', '.object.sha'],
-      {}
     );
-    const parentSha = headRes.stdout.trim();
+    console.error(`  parent sha: ${parentSha.slice(0, 12)}…`);
 
-    // 2. Create blob
-    const blobRes = await gh(
-      [
-        'api', `repos/${registryRepo}/git/blobs`,
-        '-X', 'POST',
-        '-f', `content=${base64}`,
-        '-f', 'encoding=base64',
-        '--jq', '.sha',
-      ],
-      {}
+    // 3. Create blob (pass JSON via stdin to avoid command-line size limits)
+    const blobBody = JSON.stringify({ content: base64, encoding: 'base64' });
+    const blobSha = await ghApi(
+      'create blob',
+      ['api', `repos/${registryRepo}/git/blobs`, '-X', 'POST', '--input', '-', '--jq', '.sha'],
+      { stdin: blobBody },
     );
-    const blobSha = blobRes.stdout.trim();
+    console.error(`  blob sha: ${blobSha.slice(0, 12)}… (${base64.length} chars base64)`);
 
-    // 3. Create tree
+    // 4. Create tree
     const treePath = `bundle-pending/${author}-${slug}.tar.gz`;
-    const treeRes = await gh(
-      [
-        'api', `repos/${registryRepo}/git/trees`,
-        '-X', 'POST',
-        '-f', `base_tree=${parentSha}`,
-        '-f', `tree[0][path]=${treePath}`,
-        '-f', 'tree[0][mode]=100644',
-        '-f', 'tree[0][type]=blob',
-        '-f', `tree[0][sha]=${blobSha}`,
-        '--jq', '.sha',
-      ],
-      {}
+    const treeBody = JSON.stringify({
+      base_tree: parentSha,
+      tree: [{ path: treePath, mode: '100644', type: 'blob', sha: blobSha }],
+    });
+    const treeSha = await ghApi(
+      'create tree',
+      ['api', `repos/${registryRepo}/git/trees`, '-X', 'POST', '--input', '-', '--jq', '.sha'],
+      { stdin: treeBody },
     );
-    const treeSha = treeRes.stdout.trim();
+    console.error(`  tree sha: ${treeSha.slice(0, 12)}…`);
 
-    // 4. Create commit
-    const commitRes = await gh(
-      [
-        'api', `repos/${registryRepo}/git/commits`,
-        '-X', 'POST',
-        '-f', `message=bundle pending for ${author}/${slug}`,
-        '-f', `tree=${treeSha}`,
-        '-f', `parents[]=${parentSha}`,
-        '--jq', '.sha',
-      ],
-      {}
+    // 5. Create commit
+    const commitBody = JSON.stringify({
+      message: `bundle pending for ${author}/${slug}`,
+      tree: treeSha,
+      parents: [parentSha],
+    });
+    const commitSha = await ghApi(
+      'create commit',
+      ['api', `repos/${registryRepo}/git/commits`, '-X', 'POST', '--input', '-', '--jq', '.sha'],
+      { stdin: commitBody },
     );
-    const commitSha = commitRes.stdout.trim();
+    console.error(`  commit sha: ${commitSha.slice(0, 12)}…`);
 
-    // 5. Create ref (the temp branch)
-    await gh(
-      [
-        'api', `repos/${registryRepo}/git/refs`,
-        '-X', 'POST',
-        '-f', `ref=refs/heads/${tempBranch}`,
-        '-f', `sha=${commitSha}`,
-      ],
-      {}
+    // 6. Create ref (the temp branch)
+    const refBody = JSON.stringify({ ref: `refs/heads/${tempBranch}`, sha: commitSha });
+    await ghApi(
+      'create ref',
+      ['api', `repos/${registryRepo}/git/refs`, '-X', 'POST', '--input', '-'],
+      { stdin: refBody },
     );
+    console.error(`  branch created: ${tempBranch}\n`);
 
     descriptor.bundle.pendingBranch = tempBranch;
 

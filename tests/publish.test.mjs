@@ -80,8 +80,20 @@ describe('publishViaGh with bundle', () => {
     const ghCalls = [];
     const mockGh = async (args, opts) => {
       ghCalls.push({ args, stdin: opts?.stdin });
-      if (args[0] === 'api' && args[1]?.includes('refs')) {
-        return { stdout: '', stderr: '', code: 0 };
+      // default_branch lookup
+      if (args[0] === 'api' && args[1] === 'x/y' && args.includes('.default_branch')) {
+        return { stdout: 'main', stderr: '', code: 0 };
+      }
+      // HEAD sha
+      if (args[0] === 'api' && args[1]?.includes('git/refs/heads/')) {
+        return { stdout: 'parentsha123', stderr: '', code: 0 };
+      }
+      // blob/tree/commit/ref creates — return a fake sha
+      if (args[0] === 'api' && (args[1]?.includes('git/blobs') || args[1]?.includes('git/trees') || args[1]?.includes('git/commits'))) {
+        return { stdout: 'fakesha456', stderr: '', code: 0 };
+      }
+      if (args[0] === 'api' && args[1]?.includes('git/refs') && args.includes('-X')) {
+        return { stdout: '{}', stderr: '', code: 0 };
       }
       return { stdout: 'https://github.com/x/y/issues/42', stderr: '', code: 0 };
     };
@@ -99,8 +111,8 @@ describe('publishViaGh with bundle', () => {
       gh: mockGh,
     });
     assert.equal(result.status, 'ok');
-    const pushCall = ghCalls.find(c => c.args[0] === 'api' && c.args.some(a => String(a).includes('refs')));
-    assert.ok(pushCall, 'should have pushed bundle ref');
+    const pushCall = ghCalls.find(c => c.args[0] === 'api' && c.args[1]?.includes('git/refs') && c.args.includes('-X'));
+    assert.ok(pushCall, 'should have created bundle ref');
     const issueCall = ghCalls.find(c => c.args[0] === 'issue');
     const bodyIdx = issueCall.args.indexOf('--body');
     const body = JSON.parse(issueCall.args[bodyIdx + 1]);
