@@ -20,10 +20,11 @@ async function defaultAsk(file, matches) {
     const matchInfo = matches.length > 0
       ? ` ⚠️  ${matches.length} secret-pattern match(es): ${matches.map(m => `${m.ruleId} @line ${m.line}`).join(', ')}`
       : '';
-    console.log(`\n${file.relativePath}  (${file.size} bytes)${matchInfo}`);
-    console.log('--- content preview (first 20 lines) ---');
-    console.log(file.content.split('\n').slice(0, 20).join('\n'));
-    console.log('---');
+    console.error(`\n${'─'.repeat(50)}`);
+    console.error(`📄 ${file.relativePath}  (${file.size} bytes)${matchInfo}`);
+    console.error('─'.repeat(50));
+    console.error(file.content.split('\n').slice(0, 20).join('\n'));
+    console.error('─'.repeat(50));
     return await rl.question('Include this file? (Y/n): ');
   } finally {
     rl.close();
