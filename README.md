@@ -2,7 +2,7 @@
 
 **Discover and share Claude Code setups — the full thing: hooks, instructions, skills. Never your secrets.** Publish your setup to a community gallery; mirror someone else's with a single command. Env values, OAuth tokens, and `settings.json` are architecturally unreachable — the tool cannot transmit them, even by mistake.
 
-> **Status:** v0.2.0 — publish + mirror + revoke are live. Bundles (hooks, CLAUDE.md, skills) ship in v0.3 (see [roadmap](docs/superpowers/specs/2026-04-19-claude-setups-v1-design.md)).
+> **Status:** v0.3.0 — publish (with optional `--with-bundle`), mirror (with bundle extraction), revoke. All three plans (v0.1, v0.2, v0.3) complete. Ready for npm publish.
 
 ## Premise
 
@@ -82,6 +82,18 @@ npx -y claude-setups publish
 
 The tool walks you through: read sources → enter metadata → see secret-regex warnings → file-by-file include/exclude → final preview → type `publish`. Creates a GitHub issue on the registry repo; a GitHub Action validates and moves the content into the public gallery.
 
+### With bundle (opt-in)
+
+```bash
+npx -y claude-setups publish --with-bundle \
+  --author alice --slug my-setup \
+  --title "My setup" --description "..." --tags py,backend
+```
+
+The `--with-bundle` flag triggers file-by-file interactive preview: you see each hook script, markdown file, skill, command, and agent; the tool runs a gitleaks regex scan and warns about suspicious content; you toggle include/exclude per file; nothing is uploaded until you type `publish` to confirm.
+
+`settings.json`, `~/.claude.json`, and MCP `env` sections are architecturally unreachable — no code path exists to read them. You cannot leak what the tool cannot read.
+
 Fallback path (no `gh` CLI) — opens a browser with a prefilled GitHub Issue Form for descriptor-only submission (bundle support requires `gh` for clean binary push).
 
 Everything is GitHub-backed: no separate server, no external service, no account beyond your GitHub account.
@@ -101,7 +113,7 @@ Both tools can coexist. claude-snapshot is the personal "save state" for your ow
 
 ## Status
 
-Active design, not yet implemented. Research and architectural premise are documented in [`docs/`](docs/). Implementation will reuse base utilities from claude-snapshot where applicable — notably the tarball build/extract and `.bak`-backup apply logic (see [`docs/DESIGN.md` § Base reuse](docs/DESIGN.md#base-reuse-from-claude-snapshot)).
+v0.3.0 — all three implementation plans complete. Publish, mirror, and revoke are live. Bundle support (hooks, CLAUDE.md, skills, commands, agents) with gitleaks scanning and interactive preview shipped in v0.3. Research and architectural premise documented in [`docs/`](docs/).
 
 ## License
 
