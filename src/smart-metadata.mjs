@@ -26,9 +26,9 @@ export async function isClaudeAvailable() {
   return result !== null;
 }
 
-function getGitUser() {
+function getGitHubUsername() {
   try {
-    return execSync('git config --global user.name', { encoding: 'utf-8' }).trim();
+    return execSync('gh api user --jq .login 2>/dev/null', { encoding: 'utf-8' }).trim();
   } catch {
     return null;
   }
@@ -87,8 +87,8 @@ Infer the developer profile from plugins, MCP servers, and CLAUDE.md. For author
     const validSpecialties = Object.keys(specialties);
     parsed.specialties = (parsed.specialties || []).filter(s => validSpecialties.includes(s));
     if (parsed.specialties.length === 0) parsed.specialties = ['other'];
-    if (!parsed.author || parsed.author === 'unknown') {
-      parsed.author = getGitUser() || 'unknown';
+    if (!parsed.author || parsed.author === 'unknown' || parsed.author.includes(' ')) {
+      parsed.author = getGitHubUsername() || parsed.author || 'unknown';
     }
     return parsed;
   } catch {
