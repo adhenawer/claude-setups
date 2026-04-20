@@ -95,3 +95,69 @@ Infer the developer profile from plugins, MCP servers, and CLAUDE.md. For author
     return null;
   }
 }
+
+export async function generateOverview(claudeHome, collected, bundleFiles) {
+  let claudeMd = '';
+  try {
+    claudeMd = await readFile(join(claudeHome, 'CLAUDE.md'), 'utf-8');
+    if (claudeMd.length > 3000) claudeMd = claudeMd.slice(0, 3000) + '\n...(truncated)';
+  } catch {}
+
+  const bundleList = (bundleFiles || [])
+    .map(f => `- ${f.relativePath || f.path} (${f.size || '?'} bytes)`)
+    .join('\n');
+
+  const hookContents = [];
+  for (const f of (bundleFiles || [])) {
+    if ((f.relativePath || f.path || '').startsWith('hooks/') && f.content) {
+      const preview = f.content.length > 500 ? f.content.slice(0, 500) + '...' : f.content;
+      hookContents.push(`### ${f.relativePath || f.path}\n\`\`\`bash\n${preview}\n\`\`\``);
+    }
+  }
+
+  const skillContents = [];
+  for (const f of (bundleFiles || [])) {
+    const p = f.relativePath || f.path || '';
+    if (p.startsWith('skills/') && f.content) {
+      const preview = f.content.length > 300 ? f.content.slice(0, 300) + '...' : f.content;
+      skillContents.push(`### ${p}\n${preview}`);
+    }
+  }
+
+  const context = [
+    `## Setup inventory`,
+    `Plugins: ${collected.plugins.map(p => `${p.name} (${p.marketplace}@${p.version})`).join(', ') || 'none'}`,
+    `MCP servers: ${collected.mcpServers.map(m => `${m.name} (${m.command} ${(m.args||[]).join(' ')})`).join(', ') || 'none'}`,
+    `Marketplaces: ${collected.marketplaces.map(m => `${m.name} (${m.repo})`).join(', ') || 'none'}`,
+    bundleList ? `\nBundle files:\n${bundleList}` : '',
+    claudeMd ? `\n## CLAUDE.md\n${claudeMd}` : '',
+    hookContents.length ? `\n## Hook scripts\n${hookContents.join('\n\n')}` : '',
+    skillContents.length ? `\n## Skills\n${skillContents.join('\n\n')}` : '',
+  ].filter(Boolean).join('\n');
+
+  const prompt = `You are writing a detailed overview for a Claude Code setup being published to a community gallery. Write in markdown.
+
+The overview should help someone browsing the gallery understand:
+1. **What this setup does** — the developer's workflow philosophy
+2. **Plugins** — what each plugin provides and why it's included
+3. **MCP servers** — what external tools are connected and how they're used
+4. **Hooks** — what automation runs and when (explain the actual script logic)
+5. **Skills & Commands** — what custom capabilities are available
+6. **CLAUDE.md highlights** — key instructions and conventions
+
+Write for someone evaluating whether to mirror this setup. Be specific about what each component does — don't just list names. Use ## headings for sections. Keep it under 4000 characters.
+
+Setup contents:
+${context}`;
+
+  const output = await runClaude([
+    '-p', prompt,
+    '--output-format', 'text',
+    '--model', 'sonnet',
+    '--max-turns', '1',
+  ]);
+
+  if (!output) return null;
+  const cleaned = output.replace(/^```markdown\n?/, '').replace(/\n?```$/, '').trim();
+  return cleaned.length > 5000 ? cleaned.slice(0, 5000) : cleaned;
+}

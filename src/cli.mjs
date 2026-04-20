@@ -102,6 +102,23 @@ async function cmdPublish(parsed) {
 
   const meta = await resolveMetadata(parsed, claudeHome);
 
+  let overview = null;
+  const { isClaudeAvailable, generateOverview } = await import('./smart-metadata.mjs');
+  if (await isClaudeAvailable()) {
+    console.error('Generating detailed overview...');
+    const { collect } = await import('./collect.mjs');
+    const collected = await collect(claudeHome);
+    let bundleFiles = [];
+    if (withBundle) {
+      const { collectBundleCandidates } = await import('./bundle-collect.mjs');
+      bundleFiles = await collectBundleCandidates(claudeHome);
+    }
+    overview = await generateOverview(claudeHome, collected, bundleFiles);
+    if (overview) {
+      console.error('Overview generated (%d chars)', overview.length);
+    }
+  }
+
   const { publishViaGh } = await import('./publish.mjs');
   const result = await publishViaGh({
     claudeHome,
@@ -113,6 +130,7 @@ async function cmdPublish(parsed) {
     specialties: meta.specialties,
     registryRepo: registryRepo,
     withBundle,
+    overview,
   });
 
   console.log(JSON.stringify({

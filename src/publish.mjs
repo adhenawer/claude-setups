@@ -14,6 +14,7 @@ export async function publishViaGh(opts) {
     registryRepo,
     withBundle = false,
     bundlePicker = previewFiles,
+    overview = null,
     gh = runGh,
   } = opts;
 
@@ -44,8 +45,8 @@ export async function publishViaGh(opts) {
     marketplaces: collected.marketplaces,
     mcpServers: collected.mcpServers,
   });
-  // Inject bundle metadata after build (buildDescriptor sets { present: false } default)
   descriptor.bundle = bundleInfo;
+  if (overview) descriptor.overview = overview;
   if (bundleInfo.present) {
     descriptor.bundle.url =
       `https://${registryRepo.split('/')[0]}.github.io/${registryRepo.split('/')[1]}/bundles/${author}/${slug}.tar.gz`;
