@@ -115,7 +115,9 @@ async function cmdPublish(parsed) {
     }
     overview = await generateOverview(claudeHome, collected, bundleFiles);
     if (overview) {
-      console.error('Overview generated (%d chars)', overview.length);
+      console.error('\n--- Overview preview ---\n');
+      console.error(overview);
+      console.error('\n--- End of overview ---\n');
     }
   }
 
