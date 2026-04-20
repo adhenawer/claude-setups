@@ -5,3 +5,7 @@ dist/
 .env
 .env.local
 *.staging/
+tests/fixtures/**/projects/
+tests/fixtures/**/backups/
+tests/fixtures/**/.claude.json
+*.jsonl
