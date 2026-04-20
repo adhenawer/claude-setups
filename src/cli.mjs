@@ -24,33 +24,102 @@ function parseArgs(argv) {
   return out;
 }
 
-async function cmdPublish(parsed) {
-  const { title, description, tags, author, slug, 'registry-repo': registryRepo, specialties } = parsed.flags;
-  const withBundle = Boolean(parsed.flags['with-bundle']);
+async function promptLine(question) {
+  const { createInterface } = await import('node:readline');
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  return new Promise(resolve => {
+    rl.question(question, answer => { rl.close(); resolve(answer.trim()); });
+  });
+}
 
-  if (!title || !description || !tags || !author || !slug || !specialties) {
-    console.error('Error: publish requires --title, --description, --tags, --author, --slug, --specialties');
-    console.error('Optional: --with-bundle (include hooks, CLAUDE.md, skills with per-file review)');
+async function resolveMetadata(parsed, claudeHome) {
+  const flags = parsed.flags;
+  const hasAllFlags = flags.title && flags.description && flags.tags
+    && flags.author && flags.slug && flags.specialties;
+
+  if (hasAllFlags) {
+    return {
+      author: flags.author,
+      slug: flags.slug,
+      title: flags.title,
+      description: flags.description,
+      tags: flags.tags.split(',').map(t => t.trim()).filter(Boolean),
+      specialties: flags.specialties.split(',').map(s => s.trim()).filter(Boolean),
+    };
+  }
+
+  const { collect } = await import('./collect.mjs');
+  const collected = await collect(claudeHome);
+
+  const { isClaudeAvailable, generateMetadata } = await import('./smart-metadata.mjs');
+  if (await isClaudeAvailable()) {
+    console.error('Analyzing your setup with Claude...');
+    const suggested = await generateMetadata(claudeHome, collected);
+    if (suggested) {
+      console.error('');
+      console.error(`  author:       ${suggested.author}`);
+      console.error(`  slug:         ${suggested.slug}`);
+      console.error(`  title:        ${suggested.title}`);
+      console.error(`  description:  ${suggested.description}`);
+      console.error(`  tags:         ${suggested.tags.join(', ')}`);
+      console.error(`  specialties:  ${suggested.specialties.join(', ')}`);
+      console.error('');
+      const answer = await promptLine('Accept these? (y to accept, n to edit) ');
+      if (answer.toLowerCase() === 'y' || answer === '') {
+        return suggested;
+      }
+      return {
+        author: (await promptLine(`author [${suggested.author}]: `)) || suggested.author,
+        slug: (await promptLine(`slug [${suggested.slug}]: `)) || suggested.slug,
+        title: (await promptLine(`title [${suggested.title}]: `)) || suggested.title,
+        description: (await promptLine(`description [${suggested.description}]: `)) || suggested.description,
+        tags: ((await promptLine(`tags [${suggested.tags.join(',')}]: `)) || suggested.tags.join(',')).split(',').map(t => t.trim()).filter(Boolean),
+        specialties: ((await promptLine(`specialties [${suggested.specialties.join(',')}]: `)) || suggested.specialties.join(',')).split(',').map(s => s.trim()).filter(Boolean),
+      };
+    }
+  }
+
+  if (!process.stdin.isTTY) {
+    console.error('Error: publish requires metadata. Use flags (--author, --slug, --title, --description, --tags, --specialties) or run interactively.');
     process.exit(1);
   }
 
-  const { publishViaGh } = await import('./publish.mjs');
-  const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
-  const registry = registryRepo || 'adhenawer/claude-setups-registry';
+  console.error('Enter setup metadata:');
+  return {
+    author: flags.author || await promptLine('author (GitHub username): '),
+    slug: flags.slug || await promptLine('slug (e.g. my-setup): '),
+    title: flags.title || await promptLine('title: '),
+    description: flags.description || await promptLine('description: '),
+    tags: (flags.tags || await promptLine('tags (comma-separated): ')).split(',').map(t => t.trim()).filter(Boolean),
+    specialties: (flags.specialties || await promptLine('specialties (comma-separated): ')).split(',').map(s => s.trim()).filter(Boolean),
+  };
+}
 
+async function cmdPublish(parsed) {
+  const withBundle = Boolean(parsed.flags['with-bundle']);
+  const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+  const registryRepo = parsed.flags['registry-repo'] || 'adhenawer/claude-setups-registry';
+
+  const meta = await resolveMetadata(parsed, claudeHome);
+
+  const { publishViaGh } = await import('./publish.mjs');
   const result = await publishViaGh({
     claudeHome,
-    author, slug, title, description,
-    tags: tags.split(',').map(t => t.trim()).filter(Boolean),
-    specialties: specialties.split(',').map(s => s.trim()).filter(Boolean),
-    registryRepo: registry,
+    author: meta.author,
+    slug: meta.slug,
+    title: meta.title,
+    description: meta.description,
+    tags: meta.tags,
+    specialties: meta.specialties,
+    registryRepo: registryRepo,
     withBundle,
   });
 
   console.log(JSON.stringify({
     status: 'ok',
     issueUrl: result.issueUrl,
-    slug, author,
+    slug: meta.slug,
+    author: meta.author,
     bundleFiles: result.descriptor.bundle?.files?.length || 0,
   }));
 }

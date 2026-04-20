@@ -22,14 +22,9 @@ People are sharing Claude Code setups everywhere — Reddit posts, GitHub repos,
 ## Quick Start
 
 ```bash
-# Mirror someone's setup
-npx -y claude-setups mirror alice/demo-setup
-
-# Publish yours
-npx -y claude-setups publish --with-bundle \
-  --author yourname --slug my-setup \
-  --title "My setup" --description "Backend + DevOps" \
-  --tags py,backend --specialties backend
+npx -y claude-setups publish          # share your setup
+npx -y claude-setups mirror alice/setup   # clone someone else's
+npx -y claude-setups browse           # explore the gallery
 ```
 
 ## What Gets Shared
@@ -46,13 +41,15 @@ npx -y claude-setups publish --with-bundle \
 
 ### Publish
 
-Share your Claude Code setup with the community. The tool reads your `~/.claude/` directory, collects identifiers (plugins, MCPs, marketplaces) and optionally bundles content files (hooks, markdown, skills).
-
 ```bash
-npx -y claude-setups publish --with-bundle
+npx -y claude-setups publish
 ```
 
-**Interactive file review** — every file is shown with path, size, and full content. You include or exclude each one individually. A built-in [gitleaks](https://github.com/gitleaks/gitleaks)-based regex scanner flags API keys, tokens, and private keys before anything leaves your machine. Nothing uploads until you type `publish`.
+That's it. The CLI uses `claude -p` to analyze your setup and suggest title, description, tags, and specialties automatically. You review the suggestions, confirm or edit, and publish. No flags needed.
+
+If `--with-bundle` is passed, the tool also collects your hooks, `CLAUDE.md`, skills, commands, and agents — showing each file for interactive include/exclude with [gitleaks](https://github.com/gitleaks/gitleaks) regex scanning. Nothing uploads until you type `publish`.
+
+Flags (`--author`, `--slug`, `--title`, etc.) are still supported for scripting and CI.
 
 ### Mirror
 

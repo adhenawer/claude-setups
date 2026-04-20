@@ -20,13 +20,13 @@ describe('CLI dispatch', () => {
     assert.match(r.stderr, /Unknown command/i);
   });
 
-  it('publish without metadata flags prints error', () => {
+  it('publish without metadata flags prints error in non-TTY', () => {
     const r = spawnSync('node', [CLI, 'publish'], {
       encoding: 'utf-8',
       env: { ...process.env, CLAUDE_CONFIG_DIR: resolve(__dirname, 'fixtures/fake-claude-home') },
     });
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /title|required/i);
+    assert.match(r.stderr, /metadata|required|interactively/i);
   });
 });
 
