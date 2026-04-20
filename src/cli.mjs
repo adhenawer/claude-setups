@@ -25,13 +25,12 @@ function parseArgs(argv) {
 }
 
 async function cmdPublish(parsed) {
-  const { title, description, tags, author, slug,
-    'registry-repo': registryRepo, specialties } = parsed.flags;
+  const { title, description, tags, author, slug, 'registry-repo': registryRepo, specialties } = parsed.flags;
+  const withBundle = Boolean(parsed.flags['with-bundle']);
+
   if (!title || !description || !tags || !author || !slug || !specialties) {
     console.error('Error: publish requires --title, --description, --tags, --author, --slug, --specialties');
-    console.error('Example: claude-setups publish --author alice --slug my-setup \\');
-    console.error('           --title "My setup" --description "desc" \\');
-    console.error('           --tags py,backend --specialties backend,devops');
+    console.error('Optional: --with-bundle (include hooks, CLAUDE.md, skills with per-file review)');
     process.exit(1);
   }
 
@@ -41,20 +40,18 @@ async function cmdPublish(parsed) {
 
   const result = await publishViaGh({
     claudeHome,
-    author,
-    slug,
-    title,
-    description,
+    author, slug, title, description,
     tags: tags.split(',').map(t => t.trim()).filter(Boolean),
     specialties: specialties.split(',').map(s => s.trim()).filter(Boolean),
     registryRepo: registry,
+    withBundle,
   });
 
   console.log(JSON.stringify({
     status: 'ok',
     issueUrl: result.issueUrl,
-    slug,
-    author,
+    slug, author,
+    bundleFiles: result.descriptor.bundle?.files?.length || 0,
   }));
 }
 
