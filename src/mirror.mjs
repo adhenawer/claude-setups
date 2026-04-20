@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fetchDescriptor } from './fetch-descriptor.mjs';
+import { fetchDescriptor, resolveUrl } from './fetch-descriptor.mjs';
 import {
   marketplaceAdd as defaultMarketplaceAdd,
   pluginInstall as defaultPluginInstall,
@@ -86,7 +86,8 @@ export async function executePlan(plan, options = {}) {
 }
 
 export async function mirror(urlOrId, options = {}) {
-  const descriptor = await fetchDescriptor(options.url || urlOrId);
+  const resolved = options.url || resolveUrl(urlOrId);
+  const descriptor = await fetchDescriptor(resolved);
   const plan = await computePlan(descriptor, options);
   if (options.dryRun) return { status: 'plan', descriptor, plan };
 
