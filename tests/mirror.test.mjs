@@ -114,3 +114,74 @@ describe('executePlan', () => {
     assert.equal(calls.length, 2, 'continued past failure to try other plugins');
   });
 });
+
+describe('mirror with bundle', () => {
+  it('extracts bundle files into target claudeHome after install steps', async () => {
+    const { mirror } = await import('../src/mirror.mjs');
+    const { mkdtemp, rm, readFile, mkdir, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join, dirname } = await import('node:path');
+    const tar = await import('tar');
+
+    const dir = await mkdtemp(join(tmpdir(), 'cs-mir-bundle-'));
+    try {
+      const stage = join(dir, 'stage');
+      await mkdir(stage, { recursive: true });
+      await mkdir(join(stage, 'hooks'), { recursive: true });
+      await writeFile(join(stage, 'hooks/a.sh'), '#!/bin/bash\necho bundled');
+      await writeFile(join(stage, 'CLAUDE.md'), 'bundled md');
+      const bundlePath = join(dir, 'bundle.tar.gz');
+      await tar.c({ gzip: true, file: bundlePath, cwd: stage }, ['hooks/a.sh', 'CLAUDE.md']);
+
+      const { createServer } = await import('node:http');
+      const bundleBytes = await readFile(bundlePath);
+      const descriptor = {
+        schemaVersion: '1.0.0',
+        id: { author: 'alice', slug: 'withbundle' },
+        version: 1,
+        title: 'T', description: 'D', tags: ['x'],
+        author: { handle: 'alice', url: 'https://github.com/alice' },
+        createdAt: '2026-04-19T00:00:00Z', license: 'MIT',
+        specialties: ['testing'],
+        plugins: [], marketplaces: [], mcpServers: [],
+        bundle: { present: true, url: '', files: [] },
+      };
+
+      await new Promise((resolvePromise, rejectPromise) => {
+        const server = createServer((req, res) => {
+          if (req.url.endsWith('.tar.gz')) {
+            res.writeHead(200, { 'content-type': 'application/gzip' });
+            res.end(bundleBytes);
+          } else {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify(descriptor));
+          }
+        });
+        server.listen(0, '127.0.0.1', () => {
+          const port = server.address().port;
+          const serverUrl = `http://127.0.0.1:${port}`;
+          descriptor.bundle.url = `${serverUrl}/bundle.tar.gz`;
+          const claudeHome = join(dir, '.claude');
+          mirror(`${serverUrl}/descriptor.json`, {
+            claudeHome,
+            homeDir: dirname(claudeHome),
+            listPlugins: async () => [],
+            listMarketplaces: async () => [],
+            listMcpServers: async () => [],
+            marketplaceAdd: async () => {},
+            pluginInstall: async () => {},
+            mcpAdd: async () => {},
+          }).then(async (r) => {
+            server.close();
+            try {
+              assert.equal(r.status, 'ok');
+              const hook = await readFile(join(claudeHome, 'hooks/a.sh'), 'utf-8');
+              assert.match(hook, /echo bundled/);
+              resolvePromise();
+            } catch(e) { rejectPromise(e); }
+          }).catch((e) => { server.close(); rejectPromise(e); });
+        });
+      });
+    } finally { await rm(dir, { recursive: true }); }
+  });
+});

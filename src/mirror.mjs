@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir, homedir } from 'node:os';
+import { join, dirname } from 'node:path';
 import { fetchDescriptor } from './fetch-descriptor.mjs';
 import {
   marketplaceAdd as defaultMarketplaceAdd,
@@ -7,6 +10,7 @@ import {
   listMarketplaces,
   listMcpServers,
 } from './claude.mjs';
+import { extractBundle } from './bundle-extract.mjs';
 
 export async function computePlan(descriptor, options = {}) {
   const {
@@ -85,12 +89,39 @@ export async function mirror(urlOrId, options = {}) {
   const descriptor = await fetchDescriptor(options.url || urlOrId);
   const plan = await computePlan(descriptor, options);
   if (options.dryRun) return { status: 'plan', descriptor, plan };
-  const result = await executePlan(plan, options);
+
+  const execResult = await executePlan(plan, options);
+
+  // Bundle extraction (if present)
+  let bundleResult = null;
+  if (descriptor.bundle?.present && descriptor.bundle?.url) {
+    const res = await fetch(descriptor.bundle.url);
+    if (!res.ok) {
+      return {
+        status: 'partial',
+        descriptor, plan,
+        successes: execResult.successes,
+        failures: [...execResult.failures, { kind: 'bundle', name: 'download', error: `HTTP ${res.status}` }],
+      };
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    const tempDir = await mkdtemp(join(tmpdir(), 'cs-mir-'));
+    const tarPath = join(tempDir, 'bundle.tar.gz');
+    try {
+      await writeFile(tarPath, buf);
+      const claudeHome = options.claudeHome || join(homedir(), '.claude');
+      const homeDir = options.homeDir || dirname(claudeHome);
+      bundleResult = await extractBundle(tarPath, claudeHome, { homeDir });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }
+
   return {
-    status: result.ok ? 'ok' : 'partial',
-    descriptor,
-    plan,
-    successes: result.successes,
-    failures: result.failures,
+    status: execResult.ok ? 'ok' : 'partial',
+    descriptor, plan,
+    successes: execResult.successes,
+    failures: execResult.failures,
+    bundle: bundleResult,
   };
 }
