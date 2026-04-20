@@ -25,6 +25,7 @@ export async function publishViaGh(opts) {
   let tempTarPath = null;
   if (withBundle) {
     const candidates = await collectBundleCandidates(claudeHome);
+    console.error(`\n📦 Bundle: ${candidates.length} files found. Review each one:\n`);
     const approved = await bundlePicker(candidates);
     if (approved.length > 0) {
       const tempDir = await mkdtemp(join(tmpdir(), 'cs-pub-'));
