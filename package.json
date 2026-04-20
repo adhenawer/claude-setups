@@ -1,6 +1,6 @@
 {
   "name": "claude-setups",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Publish, discover, and mirror Claude Code setups — safely, via GitHub",
   "type": "module",
   "main": "src/cli.mjs",
